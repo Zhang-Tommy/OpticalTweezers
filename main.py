@@ -71,6 +71,6 @@ spot = SPOTS[0]
 for i in range(7000):
     spot.change_pos([i, i, 2, 0])
     update_spots(SPOTS_VEC, NUM_SPOTS, SPOTS)
-    time.sleep(0.1)
+    time.sleep(0.001)
 
 kill_holo_engine()
