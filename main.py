@@ -28,6 +28,7 @@ def init_holo_engine():
 
     server_socket.sendto(str.encode(shader_source), ('127.0.0.1', 61557))
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
+    print(server_socket.recvfrom(2048))
 
 
 def add_spot(pos, intensity, phase):
@@ -64,13 +65,15 @@ def randomize_spots():
 
 init_holo_engine()
 
+
 randomize_spots()
 
+"""
 spot = SPOTS[0]
 
 for i in range(7000):
     spot.change_pos([i, i, 2, 0])
     update_spots(SPOTS_VEC, NUM_SPOTS, SPOTS)
     time.sleep(0.001)
-
-kill_holo_engine()
+"""
+#kill_holo_engine()
