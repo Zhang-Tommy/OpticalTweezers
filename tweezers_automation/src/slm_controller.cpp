@@ -37,7 +37,7 @@ int create_spot(float* spot_data);
 int modify_spot(float* spot_data, int spot_index);
 void random_spots_test();
 float* get_spots();
-void line_path(int x, int y, int pxls_sec);
+//void line_path(float y, float x, int pxls_sec);
 
 // Inputs: file path to the file being read
 // Returns: a character array of the message
@@ -178,8 +178,15 @@ float* get_spots() {
 // Returns: number of bytes sent to hologram engine
 int create_spot(float* spot_data) {
     Spot *new_spot = new Spot(spot_data);
-    spots[num_spots + 1] = *new_spot;
     num_spots += 1;
+    if (num_spots == 0) {
+        spots[0] = *new_spot;
+    }
+    else {
+        spots[num_spots] = *new_spot;
+        
+    }
+    
     float* spot_vals = get_spots();
     int update_code = update_uniform(2, spot_vals, sizeof(float) * num_spots * 4);
     return update_code;
@@ -226,33 +233,43 @@ void random_spots_test() {
 // Creates a trap at a specified point and moves it horizontally at a specified velocity
 // Inputs: x and y are initial coords of trap. pxls_sec is the velocity in pixels per second
 // distance in pixels
-void line_path(int x, int y, int pxls_sec, int pxls_distance) {
+void line_path(float y, float x, int pxls_sec, int pxls_distance) {
     int slm_refresh = 100; // refresh rate of slm (fastest we can update the hologram)
-    float spot_params[16] = { x, y, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+    float spot_params[16] = { y, -x, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 };
     create_spot(spot_params);
     // pxls / second
     // for loop runs 10 times per second
     int time = 0;
     int pxl = x;
     while (true) {  
-        spot_params[0] = pxl; 
-        this_thread::sleep_for(chrono::milliseconds(100));
-        pxl += 1;
-
+        // element 0 x  y  z  l    (x,y,z in um and l is an integer)
+        // element 1 intensity (I) phase -  -
+        // element 2 na.x na.y na.r -  (the x, y, and radius, of the spot on the SLM- useful for Shack-Hartmann holograms)
+        // element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line, phase gradient (between +/-1) is the
+        // scattering force component along the line.  Zero is usually a good choice for in-plane line traps
+        float n_spot_params[16] = { y, -pxl, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+        this_thread::sleep_for(chrono::milliseconds(1000/pxls_sec));
+        modify_spot(n_spot_params, 0);
+        pxl += 1.0;
+        //COUT("pxl_move");
         if (pxl == pxls_distance + x) {
             break;
         }
     }
     
 }
+
 int main()
 {
 
     initialize_holo_engine(); // bind to the udp socket and intialize shader code
     
-    line_path(0, 300, 1, 500);
+    line_path(70.0, 0.0, 10, 125);
     //random_spots_test(); // test the connection by creating and modifying random traps
-    
+    this_thread::sleep_for(chrono::milliseconds(1000));
+    line_path(0.0, 0.0, 10, 20);
+    this_thread::sleep_for(chrono::milliseconds(1000));
+    line_path(35.0, 0.0, 10, 125);
     // Imaging code will receive images from camera and run image processing
     // Image processing will output the coordinates of the beads
     // Assume coordinates of beads are truth
