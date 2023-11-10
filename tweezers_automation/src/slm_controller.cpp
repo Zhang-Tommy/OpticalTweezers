@@ -177,6 +177,7 @@ float* get_spots() {
 // Inputs: float array of spot data/parameters
 // Returns: number of bytes sent to hologram engine
 int create_spot(float* spot_data) {
+    // Todo: implement a check for bounds in physical space (120x90um)
     Spot *new_spot = new Spot(spot_data);
     num_spots += 1;
     if (num_spots == 0) {
@@ -231,9 +232,9 @@ void random_spots_test() {
 }
 
 // Creates a trap at a specified point and moves it horizontally at a specified velocity
-// Inputs: x and y are initial coords of trap. pxls_sec is the velocity in pixels per second
-// distance in pixels
-void line_path(float y, float x, int pxls_sec, int pxls_distance) {
+// Inputs: x and y are initial coords of trap (in micrometers (um)), um_sec um/sec 
+// um_distance movement distance
+void line_path(float y, float x, int um_sec, int um_distance) {
     int slm_refresh = 100; // refresh rate of slm (fastest we can update the hologram)
     float spot_params[16] = { y, -x, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0 };
     create_spot(spot_params);
@@ -248,28 +249,28 @@ void line_path(float y, float x, int pxls_sec, int pxls_distance) {
         // element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line, phase gradient (between +/-1) is the
         // scattering force component along the line.  Zero is usually a good choice for in-plane line traps
         float n_spot_params[16] = { y, -pxl, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-        this_thread::sleep_for(chrono::milliseconds(1000/pxls_sec));
+        this_thread::sleep_for(chrono::milliseconds(1000/um_sec));
         modify_spot(n_spot_params, 0);
         pxl += 1.0;
         //COUT("pxl_move");
-        if (pxl == pxls_distance + x) {
+        if (pxl == um_distance + x) {
             break;
         }
     }
     
 }
 
-int main()
+int mai1n()
 {
 
     initialize_holo_engine(); // bind to the udp socket and intialize shader code
     
-    line_path(70.0, 0.0, 10, 125);
+    line_path(70.0, 0.0, 10, 120);
     //random_spots_test(); // test the connection by creating and modifying random traps
     this_thread::sleep_for(chrono::milliseconds(1000));
     line_path(0.0, 0.0, 10, 20);
     this_thread::sleep_for(chrono::milliseconds(1000));
-    line_path(35.0, 0.0, 10, 125);
+    line_path(35.0, 0.0, 10, 120);
     // Imaging code will receive images from camera and run image processing
     // Image processing will output the coordinates of the beads
     // Assume coordinates of beads are truth
