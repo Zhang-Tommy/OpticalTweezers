@@ -65,13 +65,17 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-    <Import Project="tweezers_automation.props" />
+    <Import Project="tweezers_automation_debug.props" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
     <Import Project="tweezers_automation.props" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\Baumer\Baumer_GAPI_SDK_2.14.0_win_x86_64_cpp\bin</IncludePath>
+    <ExternalIncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Program Files\Baumer\Baumer_GAPI_SDK_2.14.0_win_x86_64_cpp\bin</ExternalIncludePath>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -110,6 +114,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);C:\Users\Tommy\Documents\Code\opencv\build\x64\vc16\lib\opencv_world481d.lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\SapClassBasic.lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\corppapi.lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\corapi.lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\VS2019\SapClassGui.lib; </AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -133,6 +138,7 @@
     <ClCompile Include="..\src\bead_detector.cpp" />
     <ClCompile Include="..\src\ExampleUtils.cpp" />
     <ClCompile Include="..\src\GrabCPP.cpp" />
+    <ClCompile Include="..\src\read_cam.cpp" />
     <ClCompile Include="..\src\slm_controller.cpp" />
     <ClCompile Include="..\src\spot.cpp" />
   </ItemGroup>

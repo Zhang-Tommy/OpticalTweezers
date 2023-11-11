@@ -10,6 +10,9 @@
 #include <iomanip>
 #include <string>
 #include "bgapi2_genicam.hpp"
+#include <opencv2\core\core.hpp>
+#include <opencv2\highgui\highgui.hpp>
+#include <opencv2\video\video.hpp>
 
 int main() {
     // DECLARATIONS OF VARIABLES
@@ -35,6 +38,13 @@ int main() {
     BGAPI2::Buffer * pBuffer = NULL;
     BGAPI2::String sBufferID;
     int returncode = 0;
+
+    // OPENCV VARIABLE DECLARATIONS
+    cv::VideoWriter cvVideoCreator;                 // Create OpenCV video creator
+    cv::Mat openCvImage;                            // create an OpenCV image
+    cv::String videoFileName = "openCvVideo.avi";   // Define video filename
+    cv::Size frameSize = cv::Size(2048, 1088);      // Define video frame size (frame width x height)
+    cvVideoCreator.open(videoFileName, cv::VideoWriter::fourcc('D', 'I', 'V', 'X'), 20, frameSize, true); // set the codec type and frame rate
 
     std::cout << std::endl;
     std::cout << "##########################################################" << std::endl;
@@ -549,7 +559,7 @@ int main() {
         BGAPI2::Node* pPixelFormatInfoSelector = imgProcessor->GetNode("PixelFormatInfoSelector");
         BGAPI2::Node* pBytesPerPixel = imgProcessor->GetNode("BytesPerPixel");
 
-        for (int i = 0; i < 4; i++) {
+        while (pDataStream->GetIsGrabbing()) {
             pBufferFilled = pDataStream->GetFilledBuffer(1000);  // timeout 1000 msec
             if (pBufferFilled == NULL) {
                 std::cout << "Error: Buffer Timeout after 1000 msec" << std::endl << std::endl;
@@ -694,6 +704,16 @@ int main() {
                     std::cout << std::nouppercase << std::setfill(' ') << std::dec;
                     std::cout << " " << std::endl;
                 }
+
+                // OPEN CV STUFF
+                openCvImage = cv::Mat(pTransformImage->GetHeight(), pTransformImage->GetWidth(), CV_8U, (int*)pTransformImage->GetBuffer());
+
+                // create OpenCV window ----
+                cv::namedWindow("OpenCV window: Cam");
+
+                //display the current image in the window ----
+                cv::imshow("OpenCV window : Cam", openCvImage);
+                cv::waitKey(1);
 
                 pTransformImage->Release();
                 // delete [] transformBuffer;

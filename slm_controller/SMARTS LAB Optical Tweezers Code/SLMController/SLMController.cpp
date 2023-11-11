@@ -13,6 +13,7 @@
 #include <shellapi.h>
 #include <format>
 #include "spot.h"
+#include "bead_detector.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -20,6 +21,7 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 using namespace std;
+
 Spot spots[100];
 int num_spots = 0;
 SOCKET udp_socket;
@@ -31,6 +33,8 @@ int send_message(char* message);
 int update_uniform(int uniform_var, float values[], int num_values);
 int create_spot(float* spot_data);
 int modify_spot(float* spot_data, int spot_index);
+void random_spots_test();
+float* get_spots();
 
 // Inputs: file path to the file being read
 // Returns: a character array of the message
@@ -81,11 +85,8 @@ void initialize_holo_engine() {
     inet_pton(AF_INET, "127.0.0.1", &send_addr.sin_addr);
 
     // Bind to the hologram engine
-    if (bind(udp_socket, (sockaddr*)&bind_addr, sizeof(bind_addr)) == SOCKET_ERROR) {
-        std::cerr << "Bind failed." << std::endl;
-        closesocket(udp_socket);
-        WSACleanup();
-    }
+    bind(udp_socket, (sockaddr*)&bind_addr, sizeof(bind_addr));
+
 
     /*
     const int BufLen = 10240;

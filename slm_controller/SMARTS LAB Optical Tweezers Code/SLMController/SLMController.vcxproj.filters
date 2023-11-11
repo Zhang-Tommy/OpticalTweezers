@@ -21,6 +21,9 @@
     <ClCompile Include="spot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="bead_detector.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Text Include="shader_source.txt" />
@@ -28,6 +31,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="spot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="bead_detector.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

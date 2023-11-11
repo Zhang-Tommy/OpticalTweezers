@@ -21,6 +21,9 @@
     <ClCompile Include="..\..\..\..\Desktop\SMARTS Lab\Optical Tweezers\Lab Computer Files\Ekta_code_august2017_dicty\ConsoleApplication1\stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SimpleControl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\Desktop\SMARTS Lab\Optical Tweezers\Lab Computer Files\Ekta_code_august2017_dicty\ConsoleApplication1\stdafx.h">

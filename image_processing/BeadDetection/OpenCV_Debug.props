@@ -4,14 +4,17 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
     <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64); C:\Users\Tommy\Documents\Code\opencv\build\x64\vc16\lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\VS2019</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
-      <AdditionalIncludeDirectories>C:\Users\Tommy\Documents\Code\opencv\build\include;</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Tommy\Documents\Code\opencv\build\include;C:\Users\Tommy\Documents\Code\opencv\build\include\opencv2; C:\Program Files\Teledyne DALSA\Sapera\Classes\Basic; C:\Program Files\Teledyne DALSA\Sapera\Include; C:\Program Files\Teledyne DALSA\Sapera\Classes\Gui; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\VS2019</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
-      <AdditionalLibraryDirectories>C:\Users\Tommy\Documents\Code\opencv\build\x64\vc16\lib;</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);opencv_world481d.lib</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\Tommy\Documents\Code\opencv\build\x64\vc16\lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\VS2019;C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\SapClassBasic.lib</AdditionalLibraryDirectories>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);C:\Users\Tommy\Documents\Code\opencv\build\x64\vc16\lib\opencv_world481.lib; C:\Program Files\Teledyne DALSA\Sapera\Lib\Win64\SapClassBasic.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup />

@@ -133,6 +133,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\..\Desktop\SMARTS Lab\Optical Tweezers\Lab Computer Files\Ekta_code_august2017_dicty\ConsoleApplication1\stdafx.cpp" />
     <ClCompile Include="BeadDetection.cpp" />
+    <ClCompile Include="SimpleControl.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\Desktop\SMARTS Lab\Optical Tweezers\Lab Computer Files\Ekta_code_august2017_dicty\ConsoleApplication1\stdafx.h" />
