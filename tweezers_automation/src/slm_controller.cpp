@@ -14,7 +14,6 @@
 #include <format>
 #include "spot.h"
 #include "bead_detector.h"
-#include "ExampleUtils.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -277,6 +276,6 @@ int mai1n()
     // Try to tweeze a single bead and move it in a line
     // Try to do this without feedback control
 
-
+    return 0;
 }
 
