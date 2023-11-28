@@ -31,6 +31,7 @@ Spot Spot::set_spot(float x, float y, float z, int l, float i, float p) {
 							0.0, 0.0, 0.0, 0.0 };
 	set_spot_values(spot_params);
 
+	return NULL;
 }
 
 Spot Spot::set_line_trap(float x_pos, float y_pos, float x_len, float y_len, float phase_grad) {
@@ -40,6 +41,7 @@ Spot Spot::set_line_trap(float x_pos, float y_pos, float x_len, float y_len, flo
 							0.0, 0.0, 0.0, 0.0,
 							x_len, y_len, 0.0, phase_grad };
 	set_spot_values(spot_params);
+	return NULL;
 }
 
 Spot Spot::set_na(float x_pos, float y_pos, float na_x, float na_y, float na_r) {
@@ -49,6 +51,7 @@ Spot Spot::set_na(float x_pos, float y_pos, float na_x, float na_y, float na_r) 
 							na_x, na_y, na_r, 0.0,
 							0.0, 0.0, 0.0, 0.0 };
 	set_spot_values(spot_params);
+	return NULL;
 }
 
 

@@ -5,9 +5,12 @@
 
 #include <winsock2.h>
 #include <iostream>
-#include <windows.h>
 #include <fstream>
-#include <string>
+
+#include "Serial.h"
+//#include <string>
+//#include <windows.h>
+
 #include <WS2tcpip.h>
 #include <cstring>
 #include <chrono>
@@ -22,8 +25,10 @@
 #include "bgapi2_genicam.hpp"
 #include "spot.h"
 
-using namespace std;
-using namespace std::chrono;
+
+
+//using namespace std;
+//using namespace std::chrono;
 
 #define PORT 8080
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
@@ -39,7 +44,7 @@ cv::Mat cam_img;
 std::vector<cv::KeyPoint> keypoints;
 
 // Function declarations
-char* read_file(string filePath);
+char* read_file(std::string filePath);
 void initialize_holo_engine();
 int send_message(char* message);
 int update_uniform(int uniform_var, float values[], int num_values);
@@ -53,11 +58,11 @@ int detect_beads();
 
 // Inputs: file path to the file being read
 // Returns: a character array of the message
-char* read_file(string filePath) {
+char* read_file(std::string filePath) {
     using namespace std::this_thread;
     using namespace std::chrono_literals;
-    string line;
-    ifstream myfile(filePath);
+    std::string line;
+    std::ifstream myfile(filePath);
 
     if (myfile.is_open())
     {
@@ -158,10 +163,10 @@ int update_uniform(int uniform_var, float values[], int num_values) {
     recv_addr.sin_port = htons(Port);
     inet_pton(AF_INET, "127.0.0.1", &recv_addr.sin_addr);
 
-    string packet = format("<data>\n<uniform id = {}>\n", uniform_var);
+    std::string packet = std::format("<data>\n<uniform id = {}>\n", uniform_var);
 
     for (int i = 0; i < num_values; i++) {
-        packet += to_string(values[i]) + " ";
+        packet += std::to_string(values[i]) + " ";
     }
     packet += "\n</uniform>\n</data>";
 
@@ -227,7 +232,7 @@ void random_spots_test() {
         }
 
         create_spot(random_spot_data); 
-        this_thread::sleep_for(chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     // Modify 50 random spots
@@ -239,7 +244,7 @@ void random_spots_test() {
         }
 
         modify_spot(random_spot_data, spot_index); 
-        this_thread::sleep_for(chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -267,7 +272,7 @@ void line_path(float y, float x, int um_sec, int um_distance) {
                                     1.0, 0.0, 0.0, 0.0, 
                                     0.0, 0.0, 1.0, 0.0, 
                                     0.0, 0.0, 0.0, 0.0 };
-        this_thread::sleep_for(chrono::milliseconds(1000/um_sec));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000/um_sec));
         modify_spot(n_spot_params, 0);
         pxl += 1.0;
         //COUT("pxl_move");
@@ -282,20 +287,28 @@ void testing_line_path() {
     initialize_holo_engine(); // bind to the udp socket and intialize shader code
 
     line_path(70.0, 0.0, 10, 120);
-    this_thread::sleep_for(chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     line_path(0.0, 0.0, 10, 20);
-    this_thread::sleep_for(chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     line_path(35.0, 0.0, 10, 120);
 }
 
+void test_serial() {
+    tstring commPortName(TEXT("COM1"));
+    Serial serial(commPortName, 57600);
+    char set_pow[] = "SDC 35";
+    int bytesWritten = serial.write(set_pow);
+    std::cout << std::format("{} bytes written to serial port", bytesWritten);
+}
 
 int main()
 {
+    test_serial();
     // start camera thread
     std::thread imaging(get_img);
 
     while (true) {
-        this_thread::sleep_for(chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         m.lock();
         detect_beads();
         m.unlock();
@@ -316,7 +329,7 @@ int main()
     // Move all beads to right edge of screen
     int um_sec = 3;
     for (int i = 0; i < move_dist; i++) {
-        this_thread::sleep_for(chrono::milliseconds(1000 / um_sec));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / um_sec));
         for (int j = 0; j < keypoints.size(); j++) {
             if (keypoints[j].pt.x < 115) {
                 float n_spot_params[16] = { keypoints[j].pt.y, -keypoints[j].pt.x, 0.0, 0.0,
@@ -332,9 +345,9 @@ int main()
 }
 
 int detect_beads() {
-    high_resolution_clock::time_point t0 = high_resolution_clock::now();
+    //high_resolution_clock::time_point t0 = high_resolution_clock::now();
 
-    duration<double> time_span = duration_cast<duration<double>>(t0 - t0);
+    //duration<double> time_span = duration_cast<duration<double>>(t0 - t0);
 
     //cv::Mat a = ReadMatFromTxt("a.txt", 600, 1024);
 
@@ -346,7 +359,7 @@ int detect_beads() {
 
     if (oriimg.empty()) // Check for invalid input
     {
-        cout << "Could not open or find the image" << endl;
+        std::cout << "Could not open or find the image" << std::endl;
         return -1;
     }
 
@@ -367,7 +380,7 @@ int detect_beads() {
 
     int offset = 2;
 
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
+    //high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
     cv::equalizeHist(img, Step1);
 
@@ -385,12 +398,12 @@ int detect_beads() {
     //std::vector<cv::KeyPoint> keypoints;
     cv::Ptr<cv::SimpleBlobDetector> blobDetector = cv::SimpleBlobDetector::create(params);
     blobDetector->detect(Step1, keypoints);
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
+    //high_resolution_clock::time_point t2 = high_resolution_clock::now();
     cv::Mat imgWithKeypoints;
 
     for (int i = 0; i < keypoints.size(); i++) {
         keypoints[i].pt = cv::Point(keypoints[i].pt.x - 2, keypoints[i].pt.y - 2);
-        COUT(keypoints[i].pt);  // print out coordinates of beads
+        //COUT(keypoints[i].pt);  // print out coordinates of beads
     }
 }
 
