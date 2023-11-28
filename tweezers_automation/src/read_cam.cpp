@@ -559,9 +559,6 @@ int main() {
         BGAPI2::Node* pPixelFormatInfoSelector = imgProcessor->GetNode("PixelFormatInfoSelector");
         BGAPI2::Node* pBytesPerPixel = imgProcessor->GetNode("BytesPerPixel");
 
-        // create OpenCV window ----
-        cv::namedWindow("OpenCV window: Cam");
-
         while (pDataStream->GetIsGrabbing()) {
             pBufferFilled = pDataStream->GetFilledBuffer(1000);  // timeout 1000 msec
             if (pBufferFilled == NULL) {
@@ -580,7 +577,7 @@ int main() {
                 pImage->Init(pBufferFilled);
 
                 BGAPI2::String sPixelFormat = pImage->GetPixelformat();
-                /*
+
                 std::cout << "  pImage.Pixelformat:             "
                     << pImage->GetPixelformat() << std::endl;
                 std::cout << "  pImage.Width:                   "
@@ -589,7 +586,7 @@ int main() {
                     << pImage->GetHeight() << std::endl;
                 std::cout << "  pImage.Buffer:                  "
                     << std::hex << pImage->GetBuffer() << std::dec << std::endl;
-                */
+
                 pPixelFormatInfoSelector->SetValue(sPixelFormat);
                 double fBytesPerPixel = pBytesPerPixel->GetAvailable() ? pBytesPerPixel->GetDouble() : 0.0;
 
@@ -711,7 +708,8 @@ int main() {
                 // OPEN CV STUFF
                 openCvImage = cv::Mat(pTransformImage->GetHeight(), pTransformImage->GetWidth(), CV_8U, (int*)pTransformImage->GetBuffer());
 
-                
+                // create OpenCV window ----
+                cv::namedWindow("OpenCV window: Cam");
 
                 //display the current image in the window ----
                 cv::imshow("OpenCV window : Cam", openCvImage);
