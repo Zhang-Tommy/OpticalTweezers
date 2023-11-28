@@ -1,17 +1,12 @@
 // ConsoleApplication1.cpp : Defines the entry point for the console application.
 //
 
-#include <opencv2/opencv.hpp>
-#include <opencv2/highgui.hpp>
-#include <iostream>
-#include <chrono>
-#include <fstream>
 #include "bead_detector.h"
 
 #define COUT(string) cout<< string << endl
 
-using namespace std;
-using namespace std::chrono;
+//using namespace std;
+//using namespace std::chrono;
 
 cv::Mat ReadMatFromTxt(string filename, int rows, int cols)
 {
@@ -49,7 +44,7 @@ void autoCanny(cv::Mat image, cv::Mat& output, float sigma) {
 	cv::Canny(image, output, int(lower), int(upper));
 }
 
-int detect_beads(string file_path) {
+int detect_beads() {
 	high_resolution_clock::time_point t0 = high_resolution_clock::now();
 
 	duration<double> time_span = duration_cast<duration<double>>(t0 - t0);
@@ -59,7 +54,8 @@ int detect_beads(string file_path) {
 	cv::Mat b = ReadMatFromTxt("b.txt", 600, 1024);
 	cv::Mat oriimg;
 
-	oriimg = cv::imread(file_path, cv::IMREAD_GRAYSCALE); // Read the file
+	//oriimg = cv::imread(file_path, cv::IMREAD_GRAYSCALE); // Read the file
+	oriimg = cam_img;
 
 	if (oriimg.empty()) // Check for invalid input
 	{
