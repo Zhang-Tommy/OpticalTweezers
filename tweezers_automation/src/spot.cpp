@@ -30,6 +30,7 @@ Spot Spot::set_spot(float x, float y, float z, int l, float i, float p) {
 							0.0, 0.0, 0.0, 0.0,
 							0.0, 0.0, 0.0, 0.0 };
 	set_spot_values(spot_params);
+	return NULL;
 
 	return NULL;
 }
