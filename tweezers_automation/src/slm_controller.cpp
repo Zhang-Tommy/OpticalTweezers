@@ -5,9 +5,12 @@
 
 #include <winsock2.h>
 #include <iostream>
-#include <windows.h>
 #include <fstream>
+
+#include "Serial.h"
 #include <string>
+#include <windows.h>
+
 #include <WS2tcpip.h>
 #include <cstring>
 #include <chrono>
@@ -22,8 +25,10 @@
 #include "bgapi2_genicam.hpp"
 #include "spot.h"
 
-using namespace std;
-using namespace std::chrono;
+
+
+//using namespace std;
+//using namespace std::chrono;
 
 #define PORT 8080
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
@@ -35,11 +40,12 @@ Spot spots[100];
 int num_spots = 0;
 SOCKET udp_socket;
 std::mutex m;
+std::mutex k;
 cv::Mat cam_img;
 std::vector<cv::KeyPoint> keypoints;
 
 // Function declarations
-char* read_file(string filePath);
+char* read_file(std::string filePath);
 void initialize_holo_engine();
 int send_message(char* message);
 int update_uniform(int uniform_var, float values[], int num_values);
@@ -53,11 +59,11 @@ int detect_beads();
 
 // Inputs: file path to the file being read
 // Returns: a character array of the message
-char* read_file(string filePath) {
+char* read_file(std::string filePath) {
     using namespace std::this_thread;
     using namespace std::chrono_literals;
-    string line;
-    ifstream myfile(filePath);
+    std::string line;
+    std::ifstream myfile(filePath);
 
     if (myfile.is_open())
     {
@@ -91,12 +97,12 @@ void initialize_holo_engine() {
 
     // Define ip address and port
     bind_addr.sin_family = AF_INET;
-    bind_addr.sin_port = 61556; 
-    inet_pton(AF_INET, "127.0.0.1", &bind_addr.sin_addr); 
+    bind_addr.sin_port = 61556;
+    inet_pton(AF_INET, "127.0.0.1", &bind_addr.sin_addr);
 
     sockaddr_in send_addr;
     send_addr.sin_family = AF_INET;
-    send_addr.sin_port = 61557; 
+    send_addr.sin_port = 61557;
     inet_pton(AF_INET, "127.0.0.1", &send_addr.sin_addr);
 
     // Bind to the hologram engine
@@ -112,7 +118,7 @@ void initialize_holo_engine() {
     int bytesReceived = recvfrom(udp_socket, RecvBuf, BufLen, 0, (sockaddr*)&bind_addr, &bind_addrSize);
 
     cout << bytesReceived;  // print out the bytes we receive from hologram engine
-    
+
     if (bytesReceived == SOCKET_ERROR) {
         std::cerr << "recvfrom failed." << std::endl;
     }
@@ -127,14 +133,15 @@ void initialize_holo_engine() {
     // Read shader source and uniform vars into variables
     char* shader_source = read_file("./shader_source.txt");
     char* init_uniform_vars = read_file("./init_uniform_vars.txt");
-
+    size_t shader_source_length = strlen(shader_source);
+    size_t init_length = strlen(init_uniform_vars);
     // Send code and variables to hologram engine
-    int result_shader = sendto(udp_socket, shader_source, 8425, 0, (SOCKADDR*)&recv_addr, sizeof(recv_addr)); // magic number is bytes of array
-    int result_init = sendto(udp_socket, init_uniform_vars, 1408, 0, (SOCKADDR*)&recv_addr, sizeof(recv_addr));
-   
-    if (result_shader < 0 || result_init < 0) {
-        std::cerr << "shader or init code failed to send" << std::endl;
-    }
+    int result_shader = sendto(udp_socket, shader_source, shader_source_length, 0, (SOCKADDR*)&recv_addr, sizeof(recv_addr)); // magic number is bytes of array
+    int result_init = sendto(udp_socket, init_uniform_vars, init_length, 0, (SOCKADDR*)&recv_addr, sizeof(recv_addr));
+
+    //if (result_shader < 0 || result_init < 0) {
+    //    std::cerr << "shader or init code failed to send" << std::endl;
+    //}
 
     //closesocket(udp_socket);
     //WSACleanup();
@@ -142,7 +149,7 @@ void initialize_holo_engine() {
 
 int send_message(char* message) {
     sockaddr_in send_addr;
-    send_addr.sin_family = AF_INET;    
+    send_addr.sin_family = AF_INET;
     send_addr.sin_port = 61557;
     inet_pton(AF_INET, "127.0.0.1", &send_addr.sin_addr);
     int result = sendto(udp_socket, message, sizeof(message), 0, (sockaddr*)&send_addr, sizeof(send_addr));
@@ -158,10 +165,10 @@ int update_uniform(int uniform_var, float values[], int num_values) {
     recv_addr.sin_port = htons(Port);
     inet_pton(AF_INET, "127.0.0.1", &recv_addr.sin_addr);
 
-    string packet = format("<data>\n<uniform id = {}>\n", uniform_var);
+    std::string packet = std::format("<data>\n<uniform id = {}>\n", uniform_var);
 
     for (int i = 0; i < num_values; i++) {
-        packet += to_string(values[i]) + " ";
+        packet += std::to_string(values[i]) + " ";
     }
     packet += "\n</uniform>\n</data>";
 
@@ -190,16 +197,16 @@ float* get_spots() {
 // Returns: number of bytes sent to hologram engine
 int create_spot(float* spot_data) {
     // Todo: implement a check for bounds in physical space (120x90um)
-    Spot *new_spot = new Spot(spot_data);
+    Spot* new_spot = new Spot(spot_data);
     num_spots += 1;
     if (num_spots == 0) {
         spots[0] = *new_spot;
     }
     else {
         spots[num_spots] = *new_spot;
-        
+
     }
-    
+
     float* spot_vals = get_spots();
     int update_code = update_uniform(2, spot_vals, sizeof(float) * num_spots * 4);
     return update_code;
@@ -223,23 +230,23 @@ void random_spots_test() {
     for (int i = 0; i < 50; i++) {
         float random_spot_data[16];
         for (int j = 0; j < 16; j++) {
-            random_spot_data[j] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 5.0; 
+            random_spot_data[j] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 5.0;
         }
 
-        create_spot(random_spot_data); 
-        this_thread::sleep_for(chrono::milliseconds(100));
+        create_spot(random_spot_data);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
     // Modify 50 random spots
     for (int i = 0; i < 50; i++) {
-        int spot_index = rand() % num_spots; 
+        int spot_index = rand() % num_spots;
         float random_spot_data[16];
         for (int j = 0; j < 16; j++) {
-            random_spot_data[j] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 5.0; 
+            random_spot_data[j] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 5.0;
         }
 
-        modify_spot(random_spot_data, spot_index); 
-        this_thread::sleep_for(chrono::milliseconds(100));
+        modify_spot(random_spot_data, spot_index);
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 }
 
@@ -248,26 +255,26 @@ void random_spots_test() {
 // um_distance movement distance
 void line_path(float y, float x, int um_sec, int um_distance) {
     int slm_refresh = 100; // refresh rate of slm (fastest we can update the hologram)
-    float spot_params[16] = { y, -x, 0.0, 0.0, 
-                            1.0, 0.0, 0.0, 0.0, 
-                            0.0, 0.0, 0.0, 1.0, 
+    float spot_params[16] = { y, -x, 0.0, 0.0,
+                            1.0, 0.0, 0.0, 0.0,
+                            0.0, 0.0, 0.0, 1.0,
                             0.0, 0.0, 0.0, 0.0 };
     create_spot(spot_params);
     // pxls / second
     // for loop runs 10 times per second
     int time = 0;
     int pxl = x;
-    while (true) {  
+    while (true) {
         // element 0 x  y  z  l    (x,y,z in um and l is an integer)
         // element 1 intensity (I) phase -  -
         // element 2 na.x na.y na.r -  (the x, y, and radius, of the spot on the SLM- useful for Shack-Hartmann holograms)
         // element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line, phase gradient (between +/-1) is the
         // scattering force component along the line.  Zero is usually a good choice for in-plane line traps
-        float n_spot_params[16] = { y, -pxl, 0.0, 0.0, 
-                                    1.0, 0.0, 0.0, 0.0, 
-                                    0.0, 0.0, 1.0, 0.0, 
+        float n_spot_params[16] = { y, -pxl, 0.0, 0.0,
+                                    1.0, 0.0, 0.0, 0.0,
+                                    0.0, 0.0, 1.0, 0.0,
                                     0.0, 0.0, 0.0, 0.0 };
-        this_thread::sleep_for(chrono::milliseconds(1000/um_sec));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / um_sec));
         modify_spot(n_spot_params, 0);
         pxl += 1.0;
         //COUT("pxl_move");
@@ -275,124 +282,161 @@ void line_path(float y, float x, int um_sec, int um_distance) {
             break;
         }
     }
-    
+
 }
 
 void testing_line_path() {
     initialize_holo_engine(); // bind to the udp socket and intialize shader code
 
     line_path(70.0, 0.0, 10, 120);
-    this_thread::sleep_for(chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     line_path(0.0, 0.0, 10, 20);
-    this_thread::sleep_for(chrono::milliseconds(1000));
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     line_path(35.0, 0.0, 10, 120);
 }
 
+void test_serial() {
+    tstring commPortName(TEXT("COM3"));
+    Serial serial(commPortName, 57600);
+    char set_pow[] = "SDC 35";
+    int bytesWritten = serial.write(set_pow);
+    std::cout << std::format("{} bytes written to serial port", bytesWritten) << std::endl;
+    char buffer[20];
 
-int main()
-{
-    // start camera thread
-    std::thread imaging(get_img);
-
-    while (true) {
-        this_thread::sleep_for(chrono::milliseconds(500));
-        m.lock();
-        detect_beads();
-        m.unlock();
+    std::cout << "Reading from the serial port: ";
+    for (int i = 0; i < 10; i++)
+    {
+        int charsRead = serial.read(buffer, 20);
+        std::cout << buffer;
+        Sleep(100);
     }
-    
-    // Testing capabilities by trapping all beads detected on screen and translating them all to the right
-    // Trap all beads
+    std::cout << std::endl;
+
+}
+
+void test_cam_detect() {
+    k.lock();
     for (int i = 0; i < keypoints.size(); i++) {
-        float spot_params[16] = { keypoints[i].pt.y, -keypoints[i].pt.x, 0.0, 0.0, 
-                                1.0, 0.0, 0.0, 0.0, 
-                                0.0, 0.0, 0.0, 1.0, 
+        std::cout << "start trapping all beads";
+        float spot_params[16] = { keypoints[i].pt.y * 0.1875, -keypoints[i].pt.x * 0.1875, 0.0, 0.0,
+                                1.0, 0.0, 0.0, 0.0,
+                                0.0, 0.0, 0.0, 1.0,
                                 0.0, 0.0, 0.0, 0.0 };
         create_spot(spot_params);
     }
+    k.unlock();
 
     int move_dist = 100;  // move 100um
 
     // Move all beads to right edge of screen
-    int um_sec = 3;
+    int um_sec = 1;
     for (int i = 0; i < move_dist; i++) {
-        this_thread::sleep_for(chrono::milliseconds(1000 / um_sec));
+        //m.lock();
+        //detect_beads();
+        //m.unlock();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / um_sec));
+        k.lock();
         for (int j = 0; j < keypoints.size(); j++) {
-            if (keypoints[j].pt.x < 115) {
-                float n_spot_params[16] = { keypoints[j].pt.y, -keypoints[j].pt.x, 0.0, 0.0,
+            if (keypoints[j].pt.x < 640) {
+                std::cout << "Keypoints y, x:" << " ";
+                std::cout << keypoints[j].pt.y << ", ";
+                std::cout << keypoints[j].pt.x << std::endl;
+
+                float n_spot_params[16] = { keypoints[j].pt.y * 0.1875,  (-keypoints[j].pt.x * 0.1875) - 1, 0.0, 0.0,
                                         1.0, 0.0, 0.0, 0.0,
                                         0.0, 0.0, 0.0, 1.0,
                                         0.0, 0.0, 0.0, 0.0 };
-                modify_spot(n_spot_params, i);
+                modify_spot(n_spot_params, j);
             }
         }
+        k.unlock();
     }
-    
 
 }
 
-int detect_beads() {
-    high_resolution_clock::time_point t0 = high_resolution_clock::now();
+int main()
+{
+    initialize_holo_engine();
+    //std::thread imaging(get_img);
+    //std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    //std::thread detecting(detect_beads);
 
-    duration<double> time_span = duration_cast<duration<double>>(t0 - t0);
+    //test_cam_detect();
+}
+
+int detect_beads() {
+    //high_resolution_clock::time_point t0 = high_resolution_clock::now();
+
+    //duration<double> time_span = duration_cast<duration<double>>(t0 - t0);
 
     //cv::Mat a = ReadMatFromTxt("a.txt", 600, 1024);
 
     //cv::Mat b = ReadMatFromTxt("b.txt", 600, 1024);
-    cv::Mat oriimg;
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        cv::Mat oriimg;
 
-    //oriimg = cv::imread("C:\\Users\\Tommy\\PycharmProjects\\OpticalTweezers\\image_processing\\BeadDetection\\201.jpg", cv::IMREAD_GRAYSCALE); // Read the file
-    oriimg = cam_img;
+        oriimg = cv::imread("C:\\Users\\User\\Desktop\\Ekta_code_august2017_dicty\\ConsoleApplication1\\201.jpg", cv::IMREAD_GRAYSCALE); // Read the file
+        m.lock();
+        //oriimg = cam_img.clone();
+        m.unlock();
 
-    if (oriimg.empty()) // Check for invalid input
-    {
-        cout << "Could not open or find the image" << endl;
-        return -1;
+        if (oriimg.empty()) // Check for invalid input
+        {
+            std::cout << "Could not open or find the image" << std::endl;
+            return -1;
+        }
+
+        cv::Mat img;
+        cv::Mat img1;
+        cv::Mat img2;
+        cv::Mat edges;
+        int h = oriimg.cols; int w = oriimg.rows;
+
+        //cv::subtract(oriimg, b, img1, cv::noArray(), CV_64FC1);
+        //cv::divide(img1, a, img2);
+
+        //Step 1: detecting beads
+
+
+        oriimg.convertTo(img, CV_8UC1);
+        cv::Mat Step1;
+
+        int offset = 2;
+
+        //high_resolution_clock::time_point t1 = high_resolution_clock::now();
+
+        cv::equalizeHist(img, Step1);
+
+        cv::medianBlur(Step1, Step1, 3);
+        cv::copyMakeBorder(Step1, Step1, offset, offset, offset, offset, cv::BORDER_CONSTANT, cv::Scalar(255));
+
+        cv::SimpleBlobDetector::Params params;
+        params.minArea = 300;
+        params.minCircularity = 0.85;
+        params.filterByArea = 1;
+        params.filterByInertia = 1;
+        params.filterByCircularity = 1;
+        params.filterByColor = 1;
+
+        //std::vector<cv::KeyPoint> keypoints;
+        cv::Ptr<cv::SimpleBlobDetector> blobDetector = cv::SimpleBlobDetector::create(params);
+        k.lock();
+        blobDetector->detect(Step1, keypoints);
+        //high_resolution_clock::time_point t2 = high_resolution_clock::now();
+        cv::Mat imgWithKeypoints;
+
+        
+        for (int i = 0; i < keypoints.size(); i++) {
+            keypoints[i].pt = cv::Point(keypoints[i].pt.x - 2, keypoints[i].pt.y - 2);
+            //std::cout << keypoints[i].pt;  // print out coordinates of beads
+        }
+        //std::cout << std::endl;
+        k.unlock();
     }
-
-    cv::Mat img;
-    cv::Mat img1;
-    cv::Mat img2;
-    cv::Mat edges;
-    int h = oriimg.cols; int w = oriimg.rows;
-
-    //cv::subtract(oriimg, b, img1, cv::noArray(), CV_64FC1);
-    //cv::divide(img1, a, img2);
-
-    //Step 1: detecting beads
-
-
-    oriimg.convertTo(img, CV_8UC1);
-    cv::Mat Step1;
-
-    int offset = 2;
-
-    high_resolution_clock::time_point t1 = high_resolution_clock::now();
-
-    cv::equalizeHist(img, Step1);
-
-    cv::medianBlur(Step1, Step1, 3);
-    cv::copyMakeBorder(Step1, Step1, offset, offset, offset, offset, cv::BORDER_CONSTANT, cv::Scalar(255));
-
-    cv::SimpleBlobDetector::Params params;
-    params.minArea = 300;
-    params.minCircularity = 0.85;
-    params.filterByArea = 1;
-    params.filterByInertia = 1;
-    params.filterByCircularity = 1;
-    params.filterByColor = 1;
-
-    //std::vector<cv::KeyPoint> keypoints;
-    cv::Ptr<cv::SimpleBlobDetector> blobDetector = cv::SimpleBlobDetector::create(params);
-    blobDetector->detect(Step1, keypoints);
-    high_resolution_clock::time_point t2 = high_resolution_clock::now();
-    cv::Mat imgWithKeypoints;
-
-    for (int i = 0; i < keypoints.size(); i++) {
-        keypoints[i].pt = cv::Point(keypoints[i].pt.x - 2, keypoints[i].pt.y - 2);
-        COUT(keypoints[i].pt);  // print out coordinates of beads
-    }
+    
 }
+
 
 int get_img() {
     // DECLARATIONS OF VARIABLES
@@ -483,12 +527,12 @@ int get_img() {
 
             try {
                 sysIterator->Open();
-                /*std::cout << "5.1.3   Open next system " << std::endl;
+                std::cout << "5.1.3   Open next system " << std::endl;
                 std::cout << "  5.2.1   System Name:     " << sysIterator->GetFileName() << std::endl;
                 std::cout << "          System Type:     " << sysIterator->GetTLType() << std::endl;
                 std::cout << "          System Version:  " << sysIterator->GetVersion() << std::endl;
                 std::cout << "          System PathName: " << sysIterator->GetPathName() << std::endl
-                    << std::endl;*/
+                    << std::endl;
                 sSystemID = sysIterator->GetID();
                 /*std::cout << "        Opened system - NodeList Information " << std::endl;
                 std::cout << "          GenTL Version:   "
@@ -870,9 +914,9 @@ int get_img() {
     }
 
     // CAPTURE 8 IMAGES
-    std::cout << " " << std::endl;
-    std::cout << "CAPTURE & TRANSFORM 4 IMAGES" << std::endl;
-    std::cout << "############################" << std::endl << std::endl;
+    //std::cout << " " << std::endl;
+    //std::cout << "CAPTURE & TRANSFORM 4 IMAGES" << std::endl;
+    //std::cout << "############################" << std::endl << std::endl;
 
     BGAPI2::Buffer* pBufferFilled = NULL;
     try {
@@ -916,30 +960,30 @@ int get_img() {
                 pPixelFormatInfoSelector->SetValue(sPixelFormat);
                 double fBytesPerPixel = pBytesPerPixel->GetAvailable() ? pBytesPerPixel->GetDouble() : 0.0;
 
-                std::cout << "  Bytes per image:                "
-                    << static_cast<unsigned int>((pImage->GetWidth()) * (pImage->GetHeight()) * fBytesPerPixel)
-                    << std::endl;
-                std::cout << "  Bytes per pixel:                "
-                    << fBytesPerPixel << std::endl;
+                //std::cout << "  Bytes per image:                "
+                 //   << static_cast<unsigned int>((pImage->GetWidth()) * (pImage->GetHeight()) * fBytesPerPixel)
+                  //  << std::endl;
+                //std::cout << "  Bytes per pixel:                "
+                 //   << fBytesPerPixel << std::endl;
 
                 // display first 6 pixel values of first 6 lines of the image
                 // ========================================================================
                 unsigned char* imageBuffer = (unsigned char*)pImage->GetBuffer();
 
-                std::cout << "  Address" << std::endl;
+                //std::cout << "  Address" << std::endl;
                 // set display for uppercase hex numbers filled with '0'
-                std::cout << std::uppercase << std::setfill('0') << std::hex;
+                //std::cout << std::uppercase << std::setfill('0') << std::hex;
                 for (int j = 0; j < 6; j++) {  // first 6 lines
                     void* imageBufferAddress = &imageBuffer[static_cast<int>(pImage->GetWidth() * j * fBytesPerPixel)];
-                    std::cout << "  " << std::setw(8) << imageBufferAddress << " ";
+                    //std::cout << "  " << std::setw(8) << imageBufferAddress << " ";
                     for (int k = 0; k < static_cast<int>(6 * fBytesPerPixel); k++) {  // bytes of first 6 pixels
-                        std::cout << " " << std::setw(2)
-                            << static_cast<int>(imageBuffer[static_cast<int>(pImage->GetWidth() * j * fBytesPerPixel) + k]);
+                        //std::cout << " " << std::setw(2)
+                            //<< static_cast<int>(imageBuffer[static_cast<int>(pImage->GetWidth() * j * fBytesPerPixel) + k]);
                     }
-                    std::cout << "  ..." << std::endl;
+                    //std::cout << "  ..." << std::endl;
                 }
                 // set display for lowercase dec numbers filled with ' '
-                std::cout << std::nouppercase << std::setfill(' ') << std::dec;
+                //std::cout << std::nouppercase << std::setfill(' ') << std::dec;
 
                 // if pixel format starts with "Mono"
                 if (std::string(pImage->GetPixelformat()).substr(0, 4) == "Mono") {
@@ -968,24 +1012,24 @@ int get_img() {
                     //std::cout << "  Address    Y  Y  Y  Y  Y  Y " << std::endl;
 
                     // set display for uppercase hex numbers filled with '0'
-                    std::cout << std::uppercase << std::setfill('0') << std::hex;
+                    //std::cout << std::uppercase << std::setfill('0') << std::hex;
                     for (int j = 0; j < 6; j++) {  // first 6 lines
                         void* transformBufferAddress = &transformBuffer[pTransformImage->GetWidth() * 1 * j];
-                        std::cout << "  " << std::setw(8) << std::setfill('0')
-                            << std::hex << transformBufferAddress << " ";
+                        ///std::cout << "  " << std::setw(8) << std::setfill('0')
+                         //   << std::hex << transformBufferAddress << " ";
                         for (int k = 0; k < 6; k++) {  // first 6 Pixel with Mono8 (1 Byte per Pixel)
                             // value of pixel
-                            std::cout << " " << std::setw(2)
-                                << static_cast<int>(transformBuffer[pTransformImage->GetWidth() * j + k]);
+                           // std::cout << " " << std::setw(2)
+                             //   << static_cast<int>(transformBuffer[pTransformImage->GetWidth() * j + k]);
                         }
-                        std::cout << " ..." << std::endl;
+                        //std::cout << " ..." << std::endl;
                     }
                     // set display for lowercase dec numbers filled with ' '
-                    std::cout << std::nouppercase << std::setfill(' ') << std::dec;
-                    std::cout << " " << std::endl;
+                    //std::cout << std::nouppercase << std::setfill(' ') << std::dec;
+                    //std::cout << " " << std::endl;
                 }
                 else {  // if color format
-                 // transform to BGR8
+                    // transform to BGR8
                     pTransformImage = imgProcessor->CreateTransformedImage(pImage, "BGR8");
                     /*
                     std::cout << " Image "
@@ -1035,8 +1079,9 @@ int get_img() {
                 }
 
                 // OPEN CV STUFF
+                m.lock();
                 cam_img = cv::Mat(pTransformImage->GetHeight(), pTransformImage->GetWidth(), CV_8U, (int*)pTransformImage->GetBuffer());
-
+                m.unlock();
                 //display the current image in the window ----
                 cv::imshow("Camera", cam_img);
                 cv::waitKey(CAM_FRAME_RATE);
@@ -1195,3 +1240,4 @@ int get_img() {
     std::cin >> endKey;
     return returncode;
 }
+
