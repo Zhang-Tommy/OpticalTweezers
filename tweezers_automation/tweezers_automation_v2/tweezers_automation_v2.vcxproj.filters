@@ -30,6 +30,9 @@
     <ClCompile Include="spot.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="pid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="udp_sender.h">
@@ -42,6 +45,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="spot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pid.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

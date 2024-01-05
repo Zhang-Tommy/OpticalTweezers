@@ -1,9 +1,11 @@
 #include "spot.h"
 
+
 // Spot Constructor with default zeros
 Spot::Spot() {
 	float zeros[16] = { 0.0 };
 	set_spot_values(zeros);
+	
 }
 
 // Spot constructor with specified values

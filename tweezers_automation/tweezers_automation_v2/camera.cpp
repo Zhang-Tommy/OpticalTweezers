@@ -3,6 +3,7 @@
 #include <bgapi2_genicam.hpp>
 #include <iostream>
 #include "camera.h"
+#include <chrono>
 //#include "spot_manager.h"
 
 #define CAM_FRAME_RATE 100
@@ -16,6 +17,7 @@ extern cv::Mat cam_img;
 int detect_beads() {
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        auto startTime = std::chrono::high_resolution_clock::now();
         cv::Mat oriimg;
 
         {
@@ -68,6 +70,9 @@ int detect_beads() {
             keypoints[i].pt = cv::Point(keypoints[i].pt.x - 2, keypoints[i].pt.y - 2);
             //std::cout << keypoints[i].pt;  // print out coordinates of beads
         }
+        auto endTime = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
+        //std::cout << "Execution Time: " << duration.count() << " seconds" << std::endl;
         //std::cout << std::endl;
     }
 }
@@ -107,8 +112,11 @@ int get_img_offline_test() {
         } // lock_m is automatically released when it goes out of scope
 
         // Display the current frame in the window
-        cv::imshow("Video Player", cam_img);
 
+        //cv::imshow("Video Player", cam_img);
+        cv::Mat imgWithKeypoints;
+        cv::drawKeypoints(cam_img, keypoints, imgWithKeypoints, cv::Scalar(255, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        cv::imshow("Video Player", imgWithKeypoints);
         // Wait for a key event (or a specified delay)
         int key = cv::waitKey(200);
 
