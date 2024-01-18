@@ -16,152 +16,142 @@
 
 std::mutex m; // mutex for cam_img variable
 std::mutex k; // mutex for keypoints variable
+std::mutex g;
 std::vector<cv::KeyPoint> keypoints; // stores detected bead coords, continuously updated
+std::vector<cv::KeyPoint> trap_points;
 cv::Mat cam_img; // camera frame, continuously updated
+bool terminate_all = false;
 
-void test_bead_movement();
+//SpotManager* spotManager;
+
+std::pair<int, int> calculateCoordinates(double angle, int radius);
+void test_bead_trajectory();
+void test_bead_movement(SpotManager* spotManager);
 void bead_tracking(SpotManager* spotManager);
+void trap_bead_single();
+void test_spot_manager();
+
 
 int main()
 {
-    std::thread imaging(get_img_offline_test);
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    std::thread detecting(detect_beads);
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-    
-    test_bead_movement();
+    SpotManager* spotManager = new SpotManager();
 
-    return 0;
+    std::thread imaging(get_img_offline_test);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    
+    std::thread detecting(detect_beads);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+    
+    //std::thread tracking(bead_tracking, spotManager);
+    //std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    
+    test_bead_movement(spotManager);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(100000));
+    
+    while (true) {
+        int key = cv::waitKey(1);
+        if (key == 27) {  // ASCII code for 'Esc'
+            terminate_all = true;
+            break;
+        }
+        
+    }
+    
 }
+
 
 // Identifies and uniquely labels all detected beads between consecutive frames
 // Used for PID control of bead position
 void bead_tracking(SpotManager* spotManager) {
-    // Need to find the error of commanded vs. actual position.
-    // The commanded position is stored in the grid spot array
-    // The actual position is found through bead detection
-    // Need to link/associate each detected bead with a grid bead.
-    // Needs to be robust since beads can wander on and off the work space
-    
-    // Essentially map keypoints to grid
-    // Maybe can search the grid based on the keypoints?
-    
-    // One pixel is roughly 0.1875 um
-    // If the update rate of bead tracking is 5 hz? What is reasonable threshold for the brownian motion of the bead?
-    // Lets say 1 um or 6 pixels
-
-    // for (bead in keypoints) 
-    // check coordinate in grid
-    // if any beads are assigned within search range then we assume the actual position is from keypoint
-    std::ofstream csvFile("keypoints.csv");
-
-
     while (true) {
-        //std::lock_guard<std::mutex> lock_k(k);
+        if (terminate_all) {
+            break;
+        }
         int num_tracked = 0;
-        auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        struct tm* tm_gmt = std::gmtime(&now);
+        {
+            //std::lock_guard<std::mutex> lock_g(g);
+            //std::lock_guard<std::mutex> lock_k(k);
 
-        csvFile << std::put_time(tm_gmt, "%Y-%m-%d %H:%M:%S") << ",";
+            for (auto& bead : keypoints) {
+                int x_detect = bead.pt.x;
+                int y_detect = bead.pt.y;
+                int radius = 6; // pixels
+                int x_min = std::max(0, x_detect - radius);
+                int x_max = std::min(480, x_detect + radius);
+                int y_min = std::max(0, y_detect - radius);
+                int y_max = std::min(640, y_detect + radius);
 
-        auto startTime = std::chrono::high_resolution_clock::now();
-        for (auto& bead : keypoints) {
-            
-            int x_detect = bead.pt.x;
-            int y_detect = bead.pt.y;
-            int radius = 6; // pixels
-            int x_min = std::max(0, x_detect - radius);
-            int x_max = std::min(480, x_detect + radius);
-            int y_min = std::max(0, y_detect - radius);
-            int y_max = std::min(640, y_detect + radius);
+                for (int i = x_min; i < x_max; i++) {
+                    for (int j = y_min; j < y_max; j++) {
+                        // If we find a matching spot in the grid, 
+                        if (spotManager->grid[j][i].assigned) {
+                            
 
-            for (int i = x_min; i < x_max; i++) {
-                for (int j = y_min; j < y_max; j++) {
-                    // If we find a matching spot in the grid, 
-                    if (spotManager->grid[j][i].assigned) {
-                        csvFile << x_detect << "," << y_detect << "," << i << "," << j << ",";
-
-                        std::cout << "Assigned bead at: (" << i << ", " << j << ") ";
-                        std::cout << "Detected bead at: (" << x_detect << ", " << y_detect << ")" << std::endl;
-                        num_tracked += 1;
+                            std::cout << "Assigned bead at: (" << i << ", " << j << ") ";
+                            std::cout << "Detected bead at: (" << x_detect << ", " << y_detect << ")" << std::endl;
+                            num_tracked += 1;
 
 
-                        // PID is a class 
-                        // We need two PID classes per bead
-                        // Each bead that is eligible for PID control must be detected by keypoints and be in the grid
-                        // That is already true since we are in this loop
-                        double control_x = spotManager->grid[j][i].pid_x->calculate(i, x_detect);
-                        double control_y = spotManager->grid[j][i].pid_y->calculate(j, y_detect);
-                        std::cout << "PID output: (" << control_x + i << ", " << control_y + j << ")" << std::endl;
+                            // PID is a class 
+                            // We need two PID classes per bead
+                            // Each bead that is eligible for PID control must be detected by keypoints and be in the grid
+                            // That is already true since we are in this loop
+                            double control_x = spotManager->grid[j][i].pid_x->calculate(i, x_detect);
+                            double control_y = spotManager->grid[j][i].pid_y->calculate(j, y_detect);
+                            std::cout << "PID output: (" << control_x + i << ", " << control_y + j << ")" << std::endl;
 
-                        // With the control_x and control_y values we can update the grid spot parameter and send to holo engine
+                            // With the control_x and control_y values we can update the grid spot parameter and send to holo engine
 
-                        spotManager->grid[j][i].set_new_pos(control_x, control_y);
-                        spotManager->update_traps();
+                            spotManager->grid[j][i].set_new_pos(control_x, control_y);
+                            spotManager->update_traps();
 
+                        }
                     }
                 }
             }
+            
         }
-        auto endTime = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
-
-        //std::cout << duration << std::endl;
-
-        csvFile << std::endl;
         std::cout << keypoints.size() << " ";
         std::cout << num_tracked << std::endl;
-
-        int key = cv::waitKey(300);
-
-        if (key == 27) {
-            std::cout << "Break" << std::endl;
-            break;
-        }
-
-        //std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
-
-    csvFile.close();
-
-    // Like in the beginning we can trap the beads we want to move
-    // then with those trapped beads we can track them by imagining we place it onto the grid corresponding to it's coordinates. 
-    // Look around where we placed the keypoint. If there is an assigned spot nearby then we know that one is the one that the keypoint corresponds to.
-
-    // PID control
-    // Can modify the grid[][] spot and update to hologram engine
-    // The desired coordinates are still stored and unchanged in trapped_beads and the index to grid[][]
-    // Can maybe run this in a thread, or else just do this every few moves
-    //
 }
-
-
 
 
 // Automatic bead movement test
 // Trap all detected beads, then translate them to the right edge of the work area
-void test_bead_movement() {
-    SpotManager* spotManager = new SpotManager();
+void test_bead_movement(SpotManager* spotManager) {
 
-    for (auto& keypoint : keypoints) {
-        spotManager->create_trap(keypoint.pt.y, keypoint.pt.x);
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    }
-
-    // for bead in trapped_beads
-    // move bead from old to new location
-    /*
-    while (true) {
-        for (auto& bead : spotManager->trapped_beads) {
-            spotManager->move_trap(bead.first.first, bead.first.second, bead.first.first, bead.first.second + 1);
+    {
+        std::lock_guard<std::mutex> lock_g(g);
+        std::lock_guard<std::mutex> lock_k(k);
+        for (auto& keypoint : keypoints) {
+            spotManager->create_trap(keypoint.pt.y, keypoint.pt.x);
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
-    */
-    int pxls_moved = 0;
-    std::thread tracking(bead_tracking, spotManager);
 
+    int pxls_moved = 0;
+    
+    std::list<std::pair<int, int>> beadsToMove;
+
+    for (const auto& bead : spotManager->trapped_beads) {
+        beadsToMove.push_back(bead.first);
+    }
+
+    for (const auto& bead : beadsToMove) {
+        spotManager->translate_trap(bead.first, bead.second, 300, 300, 2);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+
+    /*
     while (true) {
-        if (pxls_moved == 200) {
+        if (terminate_all) {
+            break;
+        }
+        if (pxls_moved == 300) {
             break;
         }
 
@@ -172,21 +162,102 @@ void test_bead_movement() {
             beadsToMove.push_back(bead.first);
         }
 
+        
         // Move beads
-        for (const auto& bead : beadsToMove) {
-            spotManager->move_trap(bead.first, bead.second, bead.first, bead.second);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        {
+            std::lock_guard<std::mutex> lock_g(g);
+            for (const auto& bead : beadsToMove) {
+                spotManager->move_trap(bead.first, bead.second, bead.first, bead.second);
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            }
         }
+        
 
         pxls_moved += 1;
     }
-
+   */
     // how to do PID control?
     // modify grid[][] spot variable parameters then update_spots();
     // new keypoints will be coming in, these will be used to determine error
     // only problem is that these keypoints are not used to identify a bead
     // how to ensure tracking of a specific bead?
 }
+
+void trap_bead_single() {
+    SpotManager* spotManager = new SpotManager();
+    std::cout << "Wait for holoengine" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+    int counter = 0;
+
+    for (auto& keypoint : keypoints) {
+        spotManager->create_trap(keypoint.pt.y, keypoint.pt.x);
+        counter += 1;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    std::cout << "Trapped " << counter << " beads" << std::endl;
+}
+
+// Function to calculate the coordinates of a point on a circle given an angle
+std::pair<int, int> calculateCoordinates(double angle, int radius) {
+    int centerX = 240;
+    int centerY = 320;
+    int x = static_cast<int>(radius * std::cos(angle)) + centerX;
+    int y = static_cast<int>(radius * std::sin(angle)) + centerY;
+    return std::make_pair(y, x);
+}
+
+// Test a desired trajectory mainly to validate PID control of bead positioning.
+// Also use for ensuring calibration of tweezers setup and software scaling factors
+void test_bead_trajectory() {
+    SpotManager* spotManager = new SpotManager();
+
+    std::thread tracking(bead_tracking, spotManager);
+
+    std::vector<std::pair<int, int>> trajectory;
+    // Move a single bead to starting position
+
+
+
+    // Define the parameters for the circular trajectory
+    int radius = 75;
+    int numWaypoints = 360; // Number of waypoints to complete a full circle
+
+    int counter = 0;
+    // Calculate waypoints for the circular trajectory
+    for (int angle = 0; angle < numWaypoints; ++angle) {
+        double radians = angle * (3.14 / 180.0); // Convert degrees to radians
+        auto coordinates = calculateCoordinates(radians, radius);
+        trajectory.push_back(coordinates);
+    }
+
+    int start_x = trajectory.front().second;
+    int start_y = trajectory.front().first;
+
+    std::cout << "created trap at " << start_x << ", " << start_y << std::endl;
+    spotManager->create_trap(start_y, start_x);
+    std::cout << "waiting to ensure bead is trapped" << std::endl;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+    std::cout << "done waiting for bead to be trapped" << std::endl;
+    // Print the waypoints
+    int prev_x = start_x;
+    int prev_y = start_y;
+    for (const auto& point : trajectory) {
+        if (counter == 0) {
+            counter += 1;
+        }
+        else {
+            std::cout << "(" << point.first << ", " << point.second << ")" << std::endl;
+            spotManager->move_trap(prev_y, prev_x, point.first, point.second);
+            prev_y = point.first;
+            prev_x = point.second;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+    }
+    std::cout << "Done moving bead in circular trajectory" << std::endl;
+}
+
 
 
 // Stress test the spot manager class
@@ -201,7 +272,7 @@ void test_spot_manager() {
     // Number of operations to perform
     const int numOperations = 100;
 
-    
+
     for (int i = 0; i < numOperations; ++i) {
         // Generate random coordinates within the range [0, 400]
         int x = std::rand() % 401;

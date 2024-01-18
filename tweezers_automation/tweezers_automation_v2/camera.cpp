@@ -6,22 +6,29 @@
 #include <chrono>
 //#include "spot_manager.h"
 
-#define CAM_FRAME_RATE 100
+#define CAM_FRAME_RATE 25
 
 extern std::mutex m;
 extern std::mutex k;
 extern std::vector<cv::KeyPoint> keypoints;
+extern std::vector<cv::KeyPoint> trap_points;
 extern cv::Mat cam_img;
 //extern Spot grid;
+extern bool terminate_all;
 
-int detect_beads() {
+void detect_beads() {
+
     while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        if (terminate_all) {
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
         auto startTime = std::chrono::high_resolution_clock::now();
         cv::Mat oriimg;
 
         {
-            std::unique_lock<std::mutex> lock_m(m);
+            std::lock_guard<std::mutex> lock_m(m);
+            oriimg = cam_img.clone();
             cv::cvtColor(cam_img.clone(), oriimg, cv::COLOR_BGR2GRAY);
         } // lock_m is automatically released when it goes out of scope
 
@@ -67,9 +74,17 @@ int detect_beads() {
         cv::Mat imgWithKeypoints;
 
         for (int i = 0; i < keypoints.size(); i++) {
-            keypoints[i].pt = cv::Point(keypoints[i].pt.x - 2, keypoints[i].pt.y - 2);
+            keypoints[i].pt = cv::Point(keypoints[i].pt.x, keypoints[i].pt.y);
             //std::cout << keypoints[i].pt;  // print out coordinates of beads
         }
+
+        //cv::imshow("Camera", cam_img);
+
+
+        {
+            //std::lock_guard<std::mutex> lock_k(k);
+            //std::cout << "Detected " << keypoints.size() << " beads" << std::endl;
+        } // lock_k is automatically released when it goes out of scope
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         //std::cout << "Execution Time: " << duration.count() << " seconds" << std::endl;
@@ -95,6 +110,9 @@ int get_img_offline_test() {
 
     // Main loop to read and display frames
     while (true) {
+        if (terminate_all) {
+            break;
+        }
         // Read a frame from the video file
         cv::Mat frame;
         videoCapture >> frame;
@@ -118,13 +136,8 @@ int get_img_offline_test() {
         cv::drawKeypoints(cam_img, keypoints, imgWithKeypoints, cv::Scalar(255, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
         cv::imshow("Video Player", imgWithKeypoints);
         // Wait for a key event (or a specified delay)
-        int key = cv::waitKey(200);
+        cv::waitKey(200);
 
-        // Break the loop if the user presses the 'Esc' key
-        if (key == 27) {
-            std::cout << "Video playback stopped by user." << std::endl;
-            break;
-        }
     }
 
     // Release the video capture object and close the window
@@ -780,7 +793,23 @@ int get_img() {
                 cam_img = cv::Mat(pTransformImage->GetHeight(), pTransformImage->GetWidth(), CV_8U, (int*)pTransformImage->GetBuffer());
                 m.unlock();
                 //display the current image in the window ----
+
+                /*
+                if (keypoints.size() == 0) {
+                    cv::imshow("Camera", cam_img);
+                }
+                else {
+                    cv::Mat drawn_img;
+                    cv::drawKeypoints(cam_img, keypoints, drawn_img, cv::Scalar(255, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+                    cv::imshow("Camera", drawn_img);
+                }
+                */
+                if (terminate_all) {
+                    break;
+                }
+
                 cv::imshow("Camera", cam_img);
+
                 cv::waitKey(CAM_FRAME_RATE);
 
                 pTransformImage->Release();
