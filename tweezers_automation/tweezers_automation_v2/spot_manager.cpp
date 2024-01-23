@@ -1,6 +1,7 @@
 #include "spot_manager.h"
 #include <ctime>
 #include <thread>
+#include <cmath>
 
 // Spot Manager Constructor
 // Sets all grid values to null and initializes hologram engine
@@ -11,8 +12,6 @@ SpotManager::SpotManager() {
 // Returns pointer to an array holding all the spot parameters
 // Spots are read from trapped_beads vector
 std::vector<float> SpotManager::get_spots() {
-	//float* spot_vals = new float[num_spots * 16];
-	//std::unique_ptr<float[]> spot_vals = std::make_unique<float[]>(num_spots * 16);
 	std::vector<float> spot_vals(num_spots * 16, 0.0f);
 	int count = 0;
 
@@ -29,13 +28,17 @@ std::vector<float> SpotManager::get_spots() {
 	return spot_vals;
 }
 
-
-// this compiles all the traps in the trapped_beads vector and sends over the spot data to hologram engine
+// Updates hologram engine with current spot parameters
 int SpotManager::update_traps() {
 	std::vector<float> raw_spot_vals = get_spots();
 	int update_code = update_uniform(2, raw_spot_vals, sizeof(float) * num_spots * 4);
 
-	return 0;
+	if (update_code != 0) {
+		return 0;
+	}
+	else {
+		std::cout << "Failed to update uniform variables!\n";
+	}
 }
 
 void SpotManager::create_trap(int x_pos, int y_pos) {
@@ -62,16 +65,9 @@ void SpotManager::create_trap(int x_pos, int y_pos) {
 	}
 
 	update_traps();
-	// send over to the hologram engine
 }
 
 void SpotManager::create_trap(int x_pos, int y_pos, int z, int l, float i, float p) {
-	// x(um), y, z, l (int), intenstity, phase
-	// element 0 x  y  z  l    (x,y,z in um and l is an integer)
-	// element 1 intensity (I) phase -  -
-	// element 2 na.x na.y na.r -  (the x, y, and radius, of the spot on the SLM- useful for Shack-Hartmann holograms)
-	// element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line, phase gradient (between +/-1) is the
-	// scattering force component along the line.  Zero is usually a good choice for in-plane line traps
 	float spot_params[16] = { x_pos * 0.1875, -y_pos * 0.1875, z, l,
 							i, p, 0.0, 0.0,
 							0.0, 0.0, 1.0, 0.0,
@@ -93,16 +89,10 @@ void SpotManager::create_trap(int x_pos, int y_pos, int z, int l, float i, float
 }
 
 // Create an annular trap at specified position and na parameters
-void SpotManager::create_donut(int x_pos, int y_pos, float na_x, float na_y, float na_r) {
-	// x(um), y, z, l (int), intenstity, phase
-	// element 0 x  y  z  l    (x,y,z in um and l is an integer)
-	// element 1 intensity (I) phase -  -
-	// element 2 na.x na.y na.r -  (the x, y, and radius, of the spot on the SLM- useful for Shack-Hartmann holograms)
-	// element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line, phase gradient (between +/-1) is the
-	// scattering force component along the line.  Zero is usually a good choice for in-plane line traps
-	float spot_params[16] = { x_pos * 0.1875, -y_pos * 0.1875, 0.0, 0.0,
+void SpotManager::create_donut(int x_pos, int y_pos, int vortex_charge, float na_r) {
+	float spot_params[16] = { x_pos * 0.1875, -y_pos * 0.1875, 0.0, vortex_charge,
 							1.0, 0.0, 0.0, 0.0,
-							na_x, na_y, na_r, 0.0,
+							0.0, 0.0, na_r, 0.0,
 							0.0, 0.0, 0.0, 0.0 };
 
 	// create a new spot object
@@ -122,12 +112,6 @@ void SpotManager::create_donut(int x_pos, int y_pos, float na_x, float na_y, flo
 
 // Create a line trap at specified position with desired length in x/y directions
 void SpotManager::create_line(int x_pos, int y_pos, int x_len, int y_len) {
-	// x(um), y, z, l (int), intenstity, phase
-	// element 0 x  y  z  l    (x,y,z in um and l is an integer)
-	// element 1 intensity (I) phase -  -
-	// element 2 na.x na.y na.r -  (the x, y, and radius, of the spot on the SLM- useful for Shack-Hartmann holograms)
-	// element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line, phase gradient (between +/-1) is the
-	// scattering force component along the line.  Zero is usually a good choice for in-plane line traps
 	float spot_params[16] = { x_pos * 0.1875, -y_pos * 0.1875, 0.0, 0.0,
 							1.0, 0.0, 0.0, 0.0,
 							0.0, 0.0, 1.0, 0.0,
@@ -148,15 +132,14 @@ void SpotManager::create_line(int x_pos, int y_pos, int x_len, int y_len) {
 	// send over to the hologram engine
 }
 
-
 // Move the specified trap at x_trap, y_trap to x_new, y_new in a straight, shortest path line
 void SpotManager::translate_trap(float x_trap, float y_trap, float x_new, float y_new, float um_sec) {
-	// Since we already have move_trap
-	// Just call that function
 	// We need to generate a sequence of coordinates to move the bead
-	int num_segments = 100;
+	float dist = hypotf(x_trap - x_new, y_trap - y_new) * 0.1875;
+	int num_segments = dist * 2;
 	float dx = (x_new - x_trap) / num_segments;
 	float m = (y_new - y_trap) / (x_new - x_trap);
+	float delay = 0.5 / um_sec;
 
 	std::vector<std::pair<int, int>> path_sequence;
 
@@ -171,17 +154,14 @@ void SpotManager::translate_trap(float x_trap, float y_trap, float x_new, float 
 	// iterate over each point in the path sequence and move the trap incrementally
 	for (std::pair point : path_sequence) {
 		move_trap(prev_point.first, prev_point.second, point.first, point.second);
-		std::cout << "(" << prev_point.first << ", " << prev_point.second << ") -> (" << point.first << ", " << point.second << ")" << std::endl;
+		//std::cout << "(" << prev_point.first << ", " << prev_point.second << ") -> (" << point.first << ", " << point.second << ")" << std::endl;
 		prev_point = std::make_pair(point.first, point.second);
-		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+		std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<long>(delay * 1000)));
 	}
 }
 
-
-// Moves the trap from point a to point b
+// Moves the trap from point a to point b in one step
 void SpotManager::move_trap(int x_trap, int y_trap, int x_new, int y_new) {
-	// check for existing trap at x_new, y_new
-
 	if (grid[x_new][y_new].assigned) {
 		std::cout << "Trap already exists at " << x_new << ", " << y_new << std::endl;
 	}
@@ -205,8 +185,6 @@ void SpotManager::move_trap(int x_trap, int y_trap, int x_new, int y_new) {
 }
 
 void SpotManager::remove_trap(int x_pos, int y_pos) {
-	// check if trap exists
-
 	if (grid[x_pos][y_pos].assigned) {
 		grid[x_pos][y_pos].assigned = false;
 		grid[x_pos][y_pos].clear();

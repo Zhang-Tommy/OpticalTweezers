@@ -3,26 +3,68 @@
 #include <bgapi2_genicam.hpp>
 #include <iostream>
 #include "camera.h"
+#include "spot_manager.h"
 #include <chrono>
 //#include "spot_manager.h"
 
 #define CAM_FRAME_RATE 25
+#define BEAD_DETECT_RATE 100
+#define BEAD_TRACKING_RATE 100
 
 extern std::mutex m;
 extern std::mutex k;
+extern std::mutex g;
 extern std::vector<cv::KeyPoint> keypoints;
-extern std::vector<cv::KeyPoint> trap_points;
 extern cv::Mat cam_img;
-//extern Spot grid;
-extern bool terminate_all;
+
+// Identifies and uniquely labels all detected beads between consecutive frames
+// Used for PID control of bead position
+void bead_tracking(SpotManager* spotManager) {
+    while (true) {
+        int num_tracked = 0;
+
+        {
+            std::lock_guard<std::mutex> lock_g(g);
+            std::lock_guard<std::mutex> lock_k(k);
+
+            for (auto& bead : keypoints) {
+                int x_detect = bead.pt.x;
+                int y_detect = bead.pt.y;
+                int radius = 15; // pixels
+                int y_min = std::max(0, y_detect - radius);
+                int y_max = std::min(480, y_detect + radius);
+                int x_min = std::max(0, x_detect - radius);
+                int x_max = std::min(640, x_detect + radius);
+
+                for (int i = x_min; i < x_max; i++) {
+                    for (int j = y_min; j < y_max; j++) {
+                        if (spotManager->grid[j][i].assigned) {
+                            //std::cout << "Assigned bead at: (" << i << ", " << j << ") ";
+                            //std::cout << "Detected bead at: (" << x_detect << ", " << y_detect << ")" << std::endl;
+                            num_tracked += 1;
+                            
+                            double control_x = spotManager->grid[j][i].pid_x->calculate(i, x_detect);
+                            double control_y = spotManager->grid[j][i].pid_y->calculate(j, y_detect);
+                            //std::cout << "PID output: (" << control_x + i << ", " << control_y + j << ")" << std::endl;
+
+                            spotManager->grid[j][i].set_new_pos(control_y + j, control_x + i);  // (slm_x, slm_y)
+                            spotManager->update_traps();
+
+                        }
+                    }
+                }
+            }
+        }
+        //std::cout << keypoints.size() << " ";
+        //std::cout << num_tracked << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(BEAD_TRACKING_RATE));
+    }
+}
 
 void detect_beads() {
 
     while (true) {
-        if (terminate_all) {
-            break;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        std::this_thread::sleep_for(std::chrono::milliseconds(BEAD_DETECT_RATE));
         auto startTime = std::chrono::high_resolution_clock::now();
         cv::Mat oriimg;
 
@@ -79,21 +121,18 @@ void detect_beads() {
         }
 
         //cv::imshow("Camera", cam_img);
+        //std::cout << "Detected " << keypoints.size() << " beads" << std::endl;
 
-
-        {
-            //std::lock_guard<std::mutex> lock_k(k);
-            //std::cout << "Detected " << keypoints.size() << " beads" << std::endl;
-        } // lock_k is automatically released when it goes out of scope
         auto endTime = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
         //std::cout << "Execution Time: " << duration.count() << " seconds" << std::endl;
         //std::cout << std::endl;
     }
+    
+    
 }
 
-
-int get_img_offline_test() {
+int get_img_offline_test(SpotManager* spotManager) {
     std::string videoFilePath = "C:\\Users\\Tommy\\Desktop\\Tweezers Videos\\testing.mp4";
 
     // Open the video file
@@ -110,9 +149,26 @@ int get_img_offline_test() {
 
     // Main loop to read and display frames
     while (true) {
-        if (terminate_all) {
-            break;
+
+        std::vector<cv::KeyPoint> trap_locations;
+        // Iterate through the map and convert elements to KeyPoint
+        for (const auto& entry : spotManager->trapped_beads) {
+            // Extract x, y coordinates from the pair
+            int x = entry.first.second;
+            int y = entry.first.first;
+            Spot spot = spotManager->grid[y][x];
+
+            x = -spot.vals[1] / 0.1875;
+            y = spot.vals[0] / 0.1875;
+
+            // Create a cv::KeyPoint object
+            cv::KeyPoint keypoint(x, y, 20); // You might want to adjust the size parameter (third argument)
+
+            // Add the KeyPoint to the vector
+            trap_locations.push_back(keypoint);
         }
+
+
         // Read a frame from the video file
         cv::Mat frame;
         videoCapture >> frame;
@@ -122,21 +178,19 @@ int get_img_offline_test() {
             std::cout << "End of video." << std::endl;
             break;
         }
-
+        cv::Mat imgWithKeypoints;
+        cv::Mat imgWithTrapLocations;
         {
             std::unique_lock<std::mutex> lock_m(m);
-            // Lock the mutex before updating the shared data (cam_img)
-            cam_img = frame.clone();  // Clone the frame to ensure thread safety
-        } // lock_m is automatically released when it goes out of scope
+            cam_img = frame.clone(); 
+            cv::drawKeypoints(cam_img, keypoints, imgWithKeypoints, cv::Scalar(255, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        }
+       
+        cv::drawKeypoints(imgWithKeypoints, trap_locations, imgWithTrapLocations, cv::Scalar(0, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+        
+        cv::imshow("Video Player", imgWithTrapLocations);
 
-        // Display the current frame in the window
-
-        //cv::imshow("Video Player", cam_img);
-        cv::Mat imgWithKeypoints;
-        cv::drawKeypoints(cam_img, keypoints, imgWithKeypoints, cv::Scalar(255, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
-        cv::imshow("Video Player", imgWithKeypoints);
-        // Wait for a key event (or a specified delay)
-        cv::waitKey(200);
+        cv::waitKey(50);
 
     }
 
@@ -147,8 +201,7 @@ int get_img_offline_test() {
     return 0;
 }
 
-
-int get_img() {
+int get_img(SpotManager* spotManager) {
     // DECLARATIONS OF VARIABLES
     BGAPI2::ImageProcessor* imgProcessor = NULL;
 
@@ -804,11 +857,29 @@ int get_img() {
                     cv::imshow("Camera", drawn_img);
                 }
                 */
-                if (terminate_all) {
-                    break;
+                std::vector<cv::KeyPoint> trap_locations;
+                for (const auto& entry : spotManager->trapped_beads) {
+                    // Extract x, y coordinates from the pair
+                    int x = entry.first.second;
+                    int y = entry.first.first;
+
+                    // Create a cv::KeyPoint object
+                    cv::KeyPoint keypoint(x, y, 20); // You might want to adjust the size parameter (third argument)
+
+                    // Add the KeyPoint to the vector
+                    trap_locations.push_back(keypoint);
                 }
 
-                cv::imshow("Camera", cam_img);
+                cv::Mat imgWithKeypoints;
+                cv::Mat imgWithTrapLocations;
+                {
+                    std::unique_lock<std::mutex> lock_m(m);
+                    cv::drawKeypoints(cam_img, keypoints, imgWithKeypoints, cv::Scalar(255, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+                }
+
+                cv::drawKeypoints(imgWithKeypoints, trap_locations, imgWithTrapLocations, cv::Scalar(0, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
+                cv::imshow("Camera", imgWithTrapLocations);
 
                 cv::waitKey(CAM_FRAME_RATE);
 

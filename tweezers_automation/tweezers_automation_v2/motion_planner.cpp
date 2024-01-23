@@ -1,60 +1,75 @@
 
 #include "motion_planner.h"
 #include <iostream>
-// represent work area as grid
-// define class for objects in the grid
-// what do we need for motion planning?
-// we need to know locations of obstacles
-// we need to know location of start and end points
-// 
+#include <iomanip>
 
-/*
-  initialize:
-    graph := {nodes}, {edges}
-    fringe := {root}
-    visited := empty
-
-  breadth-first-search (graph, fringe, visited):
-    while fringe not empty
-       node := first element of fringe
-       if node is what we are searching for
-          return success
-       endif
-       //do whatever you need to do to node here
-       children := find children of node in graph
-       add children not in visited to back of fringe
-       add node to visited
-       remove node from fringe
-    end while
-    return failure
-*/
+#define GRID_X 25
+#define GRID_Y 25
 
 
 Planner::Planner() {
-    
+    srand(static_cast<unsigned>(time(nullptr))); // Seed for random number generation
+    int num_obstacles = GRID_X * 4;
 
-    // I would actually set the obstacles, goal, start states here
-    // Manually setting the goal, start, and obstacles:
-    planning_graph.obstacle_grid[0][0] = 0;
-    planning_graph.obstacle_grid[0][300] = 2;
-    planning_graph.obstacle_grid[0][299] = 1;
+    for (int i = 0; i < num_obstacles; ++i) {
+        int rand_x = rand() % GRID_X; // Random x-coordinate between 0 and 50
+        int rand_y = rand() % GRID_Y; // Random y-coordinate between 0 and 50
+
+        planning_graph.obstacle_grid[rand_x][rand_y] = 1;
+    }
     
 	
 }
 
-void Planner::get_obstacles() {
-    // set of keypoints - trapped_beads
+
+
+std::vector<std::pair<int, int>> Planner::backtrack(std::pair<int, int> start, std::pair<int, int> goal) {
+    std::vector<std::pair<int, int>> path;
+
+    std::pair<int, int> curr_node = start;
+
+    const std::pair<int, int> directions[] = {
+        {0, 1}, {0, -1}, {-1, 0}, {1, 0}
+    };
+
+    while (curr_node != goal) {
+        path.push_back(curr_node);
+
+        int min_value = std::numeric_limits<int>::max();
+        std::pair<int, int> next_node;
+
+        // Iterate through directions to find the next node with the minimum value
+        for (const auto& dir : directions) {
+            std::pair<int, int> neighbor = std::make_pair(curr_node.first + dir.first, curr_node.second + dir.second);
+
+            // Check if neighbor is within grid bounds
+            if (neighbor.first >= 0 && neighbor.first < GRID_X && neighbor.second >= 0 && neighbor.second < GRID_Y) {
+                int neighbor_value = planning_graph.obstacle_grid[neighbor.first][neighbor.second];
+                
+                if (neighbor_value < min_value && neighbor_value != 1) {
+                    min_value = neighbor_value;
+                    next_node = neighbor;
+                }
+            }
+        }
+        
+        curr_node = next_node;
+    }
+
+    // Reverse the path to have it in the correct order (from start to goal)
+    std::reverse(path.begin(), path.end());
+
+    return path;
+
 }
 
-void Planner::set_goal() {
-    // Wherever I want to move the bead to
-}
+
 
 // Breadth first search through the 'graph'
 // Assigns 
 /*
-while fringe not empty
-       node := first element of fringe
+while queue not empty
+       node := first element of queue
        if node is what we are searching for
           return success
        endif
@@ -66,19 +81,42 @@ while fringe not empty
     end while
     return failure
 */
-void Planner::bfs(std::pair<int, int> goal) {
+void Planner::bfs(std::pair<int, int> start, std::pair<int, int> goal) {
+    planning_graph.queue.push(goal);
+    planning_graph.obstacle_grid[start.first][start.second] = 0;
+    planning_graph.obstacle_grid[goal.first][goal.second] = 2;
+
     while (!planning_graph.queue.empty()) {
         std::pair<int, int> node = planning_graph.queue.front();
-        
-        if (node == goal) {
-            std::cout << "bfs found goal state";
+        if (node == start) {
+            std::cout << "Start position found\n";
             break;
         }
-        // do something to the node
+        const std::pair<int, int> directions[] = {
+                {0, 1}, {0, -1}, {-1, 0}, {1, 0}
+        };
 
-        // get the children of the current node
-        // add the node to visited
-        // remove node from fringe
+        for (const auto& dir : directions) {
+            std::pair<int,int> child = std::make_pair(node.first + dir.first, node.second + dir.second);
+            if (child.first >= 0 && child.first < GRID_X && child.second >= 0 && child.second < GRID_Y && planning_graph.obstacle_grid[child.first][child.second] != 1 && (std::find(planning_graph.visited.begin(), planning_graph.visited.end(), child) == planning_graph.visited.end())) {
+                planning_graph.queue.push(child);
+                planning_graph.visited.push_back(child);
+                planning_graph.obstacle_grid[child.first][child.second] = planning_graph.obstacle_grid[node.first][node.second] + 1;
+            }
 
+        }
+        planning_graph.visited.push_back(node);
+        planning_graph.queue.pop();
     }
+    
+    for (int i = 0; i < GRID_X; ++i) {
+        for (int j = 0; j < GRID_Y; ++j) {
+            std::cout << std::setw(3) << planning_graph.obstacle_grid[i][j] << " ";
+        }
+        std::cout << '\n';
+    }
+    
+
+    
 }
+

@@ -4,6 +4,8 @@
 #include <vector>
 #include <queue>
 
+#define GRID_X 25
+#define GRID_Y 25
 // Implementation of potential field motion planning algorithm in discrete grid space
 // The individual cells (elements in grid) store a value (cost to goal wrt potential field)
 // Computed via brushfire algorithm (Breadth first search)
@@ -15,19 +17,22 @@
 class Planner 
 {
 public:
+	Planner();
 	class Graph {
 	public:
-		int obstacle_grid[480][640] = {};
+		int obstacle_grid[GRID_X][GRID_Y] = { 0 };
+		//int distances[GRID_X][GRID_Y] = { 0 };
 		std::queue<std::pair<int, int>> queue = {};
 		std::vector<std::pair<int, int>> visited = {};
 	};
-	
+
 
 	//std::vector<int, int> goal;
 	//std::vector<int, int> start;
 	Graph planning_graph = Graph();
-	void get_obstacles(); // populate obstacle grid with obstacles detected via keypoints - trapped_beads
-	void set_goal(); // sets a desired end goal state
-	void bfs(std::pair<int, int> goal);
+	//void get_obstacles(); // populate obstacle grid with obstacles detected via keypoints - trapped_beads
+	//void set_goal(); // sets a desired end goal state
+	void bfs(std::pair<int, int> start, std::pair<int, int> goal);
+	std::vector<std::pair<int, int>> backtrack(std::pair<int, int> start, std::pair<int, int> goal);
 
 };
