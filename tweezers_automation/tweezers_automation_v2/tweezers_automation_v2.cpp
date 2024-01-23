@@ -23,10 +23,10 @@ cv::Mat cam_img; // camera frame, continuously updated
 std::pair<int, int> calculate_coordinates(double angle, int radius);
 void test_bead_trajectory();
 void test_bead_movement(SpotManager* spotManager);
+void test_motion_planner(SpotManager* spotManager);
 
 int main()
 {
-    
     SpotManager* spotManager = new SpotManager();
 
     std::thread imaging(get_img_offline_test, spotManager);
@@ -38,11 +38,32 @@ int main()
     std::thread tracking(bead_tracking, spotManager);
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     
-    test_bead_movement(spotManager);
+    test_motion_planner(spotManager);
+    //test_bead_movement(spotManager);
 
-    k.lock();
-    std::vector<cv::KeyPoint> obstacles = keypoints;
+    std::this_thread::sleep_for(std::chrono::milliseconds(100000));
     
+    auto start_time = std::chrono::high_resolution_clock::now();
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    std::cout << "Time taken by function: " << duration.count() << " milliseconds" << std::endl;
+
+}
+
+// Motion planner test
+// Trap a single bead, then move it to another location
+// Use the motion planner coordinate vector for path
+void test_motion_planner(SpotManager* spotManager) {
+    k.lock();
+    
+    float y_keypoint = keypoints[1].pt.y;
+    float x_keypoint = keypoints[1].pt.x;
+    spotManager->create_trap(y_keypoint, x_keypoint);
+
+
+    // Find difference between currently tweezed beads and detected beads, these are obstacles
+    std::vector<cv::KeyPoint> obstacles = keypoints;
     for (auto& point : obstacles) {
         obstacles.erase(std::remove_if(obstacles.begin(), obstacles.end(),
             [&](const cv::KeyPoint& keypoint) {
@@ -53,36 +74,34 @@ int main()
             obstacles.end());
     }
     k.unlock();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100000));
-    
 
     Planner* plan = new Planner();
-    auto start_time = std::chrono::high_resolution_clock::now();
 
-
-
-
-
-    std::vector<std::pair<int, int>> path;
-    plan->bfs(std::make_pair(0, 0), std::make_pair(24, 24));
-
-    path = plan->backtrack(std::make_pair(0, 0), std::make_pair(24, 24));
+    plan->add_obstacles(obstacles);
     
+    std::pair<int, int> start = std::make_pair(x_keypoint / (640 / GRID_X), y_keypoint / (480 / GRID_Y)); // this should be the bead we want to move
+    std::pair<int, int> goal = std::make_pair(24, 24);
+
+    plan->bfs(start, goal);
+
+    std::vector<std::pair<int, int>> path = plan->backtrack(start, goal);
+    int prev_x = x_keypoint;
+    int prev_y = y_keypoint;
+
     for (auto& elem : path) {
-        std::cout << "(" << elem.first << ", " << elem.second << ")\n";
+        // scale element back to camera coords
+        int resize_x = elem.first * (640 / GRID_X);
+        int resize_y = elem.second * (480 / GRID_Y);
+        
+        spotManager->move_trap(prev_y, prev_x, resize_y, resize_x);
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+        prev_y = resize_y;
+        prev_x = resize_x;
+        std::cout << "(" << prev_y << ", " << prev_x << ")\n";
     }
 
-    // we need to get the obstacles from detect_beads, lets take the difference between keypoints and trapped_beads 
-    // for every element in keypoints: 
-    // if trapped_beads has it, remove from keypoints
-    // make a copy of keypoints 
-
-
-
-
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-    std::cout << "Time taken by function: " << duration.count() << " milliseconds" << std::endl;
+    // for every element in path, move the bead in desired trajectory
 }
 
 // Automatic bead movement test
@@ -104,7 +123,7 @@ void test_bead_movement(SpotManager* spotManager) {
         }
     }
     
-    /*
+    
     std::list<std::pair<int, int>> beads_to_move;
 
     for (const auto& bead : spotManager->trapped_beads) {
@@ -115,8 +134,11 @@ void test_bead_movement(SpotManager* spotManager) {
         spotManager->translate_trap(bead.first, bead.second, 400, 600, 10);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    */
+    
 }
+
+
+
 
 // Function to calculate the coordinates of a point on a circle given an angle
 std::pair<int, int> calculate_coordinates(double angle, int radius) {

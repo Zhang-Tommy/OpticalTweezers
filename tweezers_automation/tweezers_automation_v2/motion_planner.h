@@ -1,11 +1,12 @@
 #pragma once
 
-
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui.hpp>
 #include <vector>
 #include <queue>
 
-#define GRID_X 25
-#define GRID_Y 25
+#define GRID_X 53
+#define GRID_Y 40
 // Implementation of potential field motion planning algorithm in discrete grid space
 // The individual cells (elements in grid) store a value (cost to goal wrt potential field)
 // Computed via brushfire algorithm (Breadth first search)
@@ -34,5 +35,6 @@ public:
 	//void set_goal(); // sets a desired end goal state
 	void bfs(std::pair<int, int> start, std::pair<int, int> goal);
 	std::vector<std::pair<int, int>> backtrack(std::pair<int, int> start, std::pair<int, int> goal);
+	void add_obstacles(std::vector<cv::KeyPoint> obstacles);
 
 };

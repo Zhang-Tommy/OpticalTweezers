@@ -7,7 +7,7 @@
 #include <chrono>
 //#include "spot_manager.h"
 
-#define CAM_FRAME_RATE 25
+#define CAM_FRAME_RATE 250
 #define BEAD_DETECT_RATE 100
 #define BEAD_TRACKING_RATE 100
 

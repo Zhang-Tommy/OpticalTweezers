@@ -2,26 +2,43 @@
 #include "motion_planner.h"
 #include <iostream>
 #include <iomanip>
+#include <opencv2/opencv.hpp>
+#include <opencv2/highgui.hpp>
 
-#define GRID_X 25
-#define GRID_Y 25
+#define GRID_X 53
+#define GRID_Y 40
 
 
 Planner::Planner() {
-    srand(static_cast<unsigned>(time(nullptr))); // Seed for random number generation
-    int num_obstacles = GRID_X * 4;
-
+    //srand(static_cast<unsigned>(time(nullptr))); // Seed for random number generation
+    //int num_obstacles = GRID_X * 4;
+    /*
     for (int i = 0; i < num_obstacles; ++i) {
         int rand_x = rand() % GRID_X; // Random x-coordinate between 0 and 50
         int rand_y = rand() % GRID_Y; // Random y-coordinate between 0 and 50
 
         planning_graph.obstacle_grid[rand_x][rand_y] = 1;
     }
-    
+    */
 	
 }
 
+void Planner::add_obstacles(std::vector<cv::KeyPoint> obstacles) {
+    int obstacle_cnt = 0;
+    for (auto& obstacle : obstacles) {
+        // Add these obstacles to the obstacle_grid[x][y]
+        // But first we need to convert coordiantes of obstacle[480][640] to coordinates of obstacle_grid[GRID_X][GRID_Y]
+        // divide and round static_cast<int>(keypoint.pt.x)
+        int scale_x = static_cast<int>(obstacle.pt.x / (640 / GRID_X));
+        int scale_y = static_cast<int>(obstacle.pt.y / (480 / GRID_Y));
 
+        // scale_x and scale_y are used in obstacle_grid
+        planning_graph.obstacle_grid[scale_x][scale_y] = 1;
+        obstacle_cnt += 1;
+    }
+
+    std::cout << obstacle_cnt << " obstacles added\n";
+}
 
 std::vector<std::pair<int, int>> Planner::backtrack(std::pair<int, int> start, std::pair<int, int> goal) {
     std::vector<std::pair<int, int>> path;
@@ -46,18 +63,18 @@ std::vector<std::pair<int, int>> Planner::backtrack(std::pair<int, int> start, s
             if (neighbor.first >= 0 && neighbor.first < GRID_X && neighbor.second >= 0 && neighbor.second < GRID_Y) {
                 int neighbor_value = planning_graph.obstacle_grid[neighbor.first][neighbor.second];
                 
-                if (neighbor_value < min_value && neighbor_value != 1) {
+                if (neighbor_value < min_value && neighbor_value > 1) {
                     min_value = neighbor_value;
                     next_node = neighbor;
                 }
             }
         }
-        
+
         curr_node = next_node;
     }
 
     // Reverse the path to have it in the correct order (from start to goal)
-    std::reverse(path.begin(), path.end());
+    //std::reverse(path.begin(), path.end());
 
     return path;
 
@@ -109,9 +126,9 @@ void Planner::bfs(std::pair<int, int> start, std::pair<int, int> goal) {
         planning_graph.queue.pop();
     }
     
-    for (int i = 0; i < GRID_X; ++i) {
-        for (int j = 0; j < GRID_Y; ++j) {
-            std::cout << std::setw(3) << planning_graph.obstacle_grid[i][j] << " ";
+    for (int i = 0; i < GRID_Y; ++i) {
+        for (int j = 0; j < GRID_X; ++j) {
+            std::cout << std::setw(3) << planning_graph.obstacle_grid[j][i] << " ";
         }
         std::cout << '\n';
     }

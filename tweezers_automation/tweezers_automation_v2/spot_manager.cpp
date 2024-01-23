@@ -179,6 +179,7 @@ void SpotManager::move_trap(int x_trap, int y_trap, int x_new, int y_new) {
 
 		// change the x and y position in raw spot values
 		grid[x_new][y_new].set_new_pos(x_new, y_new);
+		//grid[x_new][x_new].assigned = true;
 		trapped_beads[std::make_pair(x_new, y_new)] = &grid[x_new][y_new];
 		update_traps();
 	}
