@@ -4,6 +4,7 @@
 #include <opencv2/highgui.hpp>
 #include <vector>
 #include <queue>
+#include "spot_manager.h"
 
 #define GRID_X 53
 #define GRID_Y 40
@@ -18,7 +19,8 @@
 class Planner 
 {
 public:
-	Planner();
+	Planner(SpotManager* spotManager);
+	SpotManager* spotManager;
 	class Graph {
 	public:
 		int obstacle_grid[GRID_X][GRID_Y] = { 0 };
@@ -36,5 +38,6 @@ public:
 	void bfs(std::pair<int, int> start, std::pair<int, int> goal);
 	std::vector<std::pair<int, int>> backtrack(std::pair<int, int> start, std::pair<int, int> goal);
 	void add_obstacles(std::vector<cv::KeyPoint> obstacles);
+	void get_obstacles();
 
 };

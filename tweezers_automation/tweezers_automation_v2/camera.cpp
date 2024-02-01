@@ -16,6 +16,39 @@ extern std::mutex k;
 extern std::mutex g;
 extern std::vector<cv::KeyPoint> keypoints;
 extern cv::Mat cam_img;
+extern std::vector<cv::KeyPoint> usr_points;
+
+constexpr float SCALE_X = 0.1875 * 1.07;
+constexpr float SCALE_Y = 0.1875 * 1.08;
+
+void onMouse(int event, int x, int y, int flags, void* spotManager) {
+    // On left click mouse, add trap
+    if (event == cv::EVENT_LBUTTONUP) {
+        // Add a manually added keypoint at the clicked position
+        usr_points.push_back(cv::KeyPoint(x, y, 20)); // Adjust size parameter as needed
+        g.lock();
+        ((SpotManager*)spotManager)->create_trap(y, x);
+        g.unlock();
+        //printf("Selected %i, %i\n", x, y);
+    } else if (event == cv::EVENT_RBUTTONDOWN) {  // On right click, remove trap
+        int buf = 5;
+
+        usr_points.erase(std::remove_if(usr_points.begin(), usr_points.end(), [x, y, buf, spotManager](const cv::KeyPoint& point) {
+            bool remove_condition = (point.pt.x >= x - buf && point.pt.x <= x + buf &&
+                point.pt.y >= y - buf && point.pt.y <= y + buf);
+
+            // Remove corresponding traps using spotManager->remove_trap(y, x)
+            if (remove_condition) {
+                int trap_x = static_cast<int>(point.pt.x);
+                int trap_y = static_cast<int>(point.pt.y);
+                ((SpotManager*)spotManager)->remove_trap(trap_y, trap_x);
+            }
+
+            return remove_condition;
+            }), usr_points.end());
+
+    } // on drag, move specified trap
+}
 
 // Identifies and uniquely labels all detected beads between consecutive frames
 // Used for PID control of bead position
@@ -133,6 +166,8 @@ void detect_beads() {
 }
 
 int get_img_offline_test(SpotManager* spotManager) {
+    
+
     std::string videoFilePath = "C:\\Users\\Tommy\\Desktop\\Tweezers Videos\\testing.mp4";
 
     // Open the video file
@@ -146,7 +181,7 @@ int get_img_offline_test(SpotManager* spotManager) {
 
     // Create a window for displaying the video frames
     cv::namedWindow("Video Player", cv::WINDOW_NORMAL);
-
+    cv::setMouseCallback("Video Player", onMouse, spotManager);
     // Main loop to read and display frames
     while (true) {
 
@@ -158,18 +193,15 @@ int get_img_offline_test(SpotManager* spotManager) {
             int y = entry.first.first;
             Spot spot = spotManager->grid[y][x];
 
-            x = -spot.vals[1] / 0.1875;
-            y = spot.vals[0] / 0.1875;
+            float x_key = -spot.vals[1] / SCALE_X;
+            float y_key = spot.vals[0] / SCALE_Y;
 
-            // Create a cv::KeyPoint object
-            cv::KeyPoint keypoint(x, y, 20); // You might want to adjust the size parameter (third argument)
+            cv::KeyPoint keypoint(x_key, y_key, 20); 
 
             // Add the KeyPoint to the vector
             trap_locations.push_back(keypoint);
         }
 
-
-        // Read a frame from the video file
         cv::Mat frame;
         videoCapture >> frame;
 
@@ -188,7 +220,13 @@ int get_img_offline_test(SpotManager* spotManager) {
        
         cv::drawKeypoints(imgWithKeypoints, trap_locations, imgWithTrapLocations, cv::Scalar(0, 255, 0), cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
         
-        cv::imshow("Video Player", imgWithTrapLocations);
+        cv::Mat imgWithManualKeypoints;
+        cv::drawKeypoints(imgWithTrapLocations, usr_points, imgWithManualKeypoints, cv::Scalar(0, 0, 255),
+            cv::DrawMatchesFlags::DRAW_RICH_KEYPOINTS);
+
+        cv::imshow("Video Player", imgWithManualKeypoints);
+
+        //cv::imshow("Video Player", imgWithTrapLocations);
 
         cv::waitKey(50);
 

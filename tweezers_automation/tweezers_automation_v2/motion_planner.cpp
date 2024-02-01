@@ -5,23 +5,53 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 
-#define GRID_X 53
-#define GRID_Y 40
 
 
-Planner::Planner() {
-    //srand(static_cast<unsigned>(time(nullptr))); // Seed for random number generation
-    //int num_obstacles = GRID_X * 4;
-    /*
-    for (int i = 0; i < num_obstacles; ++i) {
-        int rand_x = rand() % GRID_X; // Random x-coordinate between 0 and 50
-        int rand_y = rand() % GRID_Y; // Random y-coordinate between 0 and 50
+extern std::vector<cv::KeyPoint> keypoints;
+extern std::mutex k;
 
-        planning_graph.obstacle_grid[rand_x][rand_y] = 1;
-    }
-    */
-	
+
+Planner::Planner(SpotManager* spotManager) : spotManager(spotManager) {
+
 }
+
+
+
+void Planner::get_obstacles() {
+    k.lock();
+    // Find difference between currently tweezed beads and detected beads, these are obstacles
+    std::vector<cv::KeyPoint> obstacles = keypoints;
+    for (auto& point : obstacles) {
+        obstacles.erase(std::remove_if(obstacles.begin(), obstacles.end(),
+            [&](const cv::KeyPoint& keypoint) {
+                int x = static_cast<int>(keypoint.pt.x);
+                int y = static_cast<int>(keypoint.pt.y);
+                return spotManager->trapped_beads.count(std::make_pair(y, x));
+            }),
+            obstacles.end());
+    }
+
+    // for every obstacle
+    // for int i = obstacle.x, i < obstacle.x + radius
+    // for int j = obstacle.y, j < obstacle.y + radius
+    // if in the grid
+    // set as obstacle
+    int radius = 2;
+    for (auto& obstacle : obstacles) {
+        int obs_x = obstacle.pt.x / (640 / GRID_X);
+        int obs_y = obstacle.pt.y / (480 / GRID_Y);
+        for (int i = obs_x - radius; i < obs_x + radius + 1; i++) {
+            for (int j = obs_y - radius; j < obs_y + radius + 1; j++) {
+                if (!(i < 0 || i > GRID_X || j < 0 || j > GRID_Y)) {
+                    obstacles.push_back(cv::KeyPoint(static_cast<float>(i * (640 / GRID_X)), static_cast<float>(j * (480 / GRID_Y)), 20));
+                }
+            }
+        }
+    }
+    k.unlock();
+    add_obstacles(obstacles);
+}
+
 
 void Planner::add_obstacles(std::vector<cv::KeyPoint> obstacles) {
     int obstacle_cnt = 0;
@@ -39,6 +69,7 @@ void Planner::add_obstacles(std::vector<cv::KeyPoint> obstacles) {
 
     std::cout << obstacle_cnt << " obstacles added\n";
 }
+
 
 std::vector<std::pair<int, int>> Planner::backtrack(std::pair<int, int> start, std::pair<int, int> goal) {
     std::vector<std::pair<int, int>> path;
@@ -125,6 +156,7 @@ void Planner::bfs(std::pair<int, int> start, std::pair<int, int> goal) {
         planning_graph.visited.push_back(node);
         planning_graph.queue.pop();
     }
+    
     
     for (int i = 0; i < GRID_Y; ++i) {
         for (int j = 0; j < GRID_X; ++j) {
