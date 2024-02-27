@@ -14,6 +14,7 @@
 extern std::mutex m;
 extern std::mutex k;
 extern std::mutex g;
+extern std::mutex t;
 extern std::vector<cv::KeyPoint> keypoints;
 extern cv::Mat cam_img;
 extern std::vector<cv::KeyPoint> usr_points;
@@ -47,7 +48,14 @@ void onMouse(int event, int x, int y, int flags, void* spotManager) {
             return remove_condition;
             }), usr_points.end());
 
-    } // on drag, move specified trap
+    }
+    else if (event == cv::EVENT_MBUTTONDOWN) {
+        usr_points.push_back(cv::KeyPoint(x, y, 50));
+        g.lock();
+        ((SpotManager*)spotManager)->create_donut(y, x, 15, -15);
+        g.unlock();
+
+    }
 }
 
 // Identifies and uniquely labels all detected beads between consecutive frames
@@ -168,7 +176,7 @@ void detect_beads() {
 int get_img_offline_test(SpotManager* spotManager) {
     
 
-    std::string videoFilePath = "C:\\Users\\Tommy\\Desktop\\Tweezers Videos\\testing.mp4";
+    std::string videoFilePath = "C:\\Users\\Tommy\\Desktop\\Tweezers Videos\\Motion Planning\\testing_video2.mp4";
 
     // Open the video file
     cv::VideoCapture videoCapture(videoFilePath);
@@ -187,6 +195,7 @@ int get_img_offline_test(SpotManager* spotManager) {
 
         std::vector<cv::KeyPoint> trap_locations;
         // Iterate through the map and convert elements to KeyPoint
+        g.lock();
         for (const auto& entry : spotManager->trapped_beads) {
             // Extract x, y coordinates from the pair
             int x = entry.first.second;
@@ -201,7 +210,7 @@ int get_img_offline_test(SpotManager* spotManager) {
             // Add the KeyPoint to the vector
             trap_locations.push_back(keypoint);
         }
-
+        g.unlock();
         cv::Mat frame;
         videoCapture >> frame;
 

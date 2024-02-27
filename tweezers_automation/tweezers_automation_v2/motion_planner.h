@@ -20,24 +20,22 @@ class Planner
 {
 public:
 	Planner(SpotManager* spotManager);
+	Planner(SpotManager* spotManager, bool is_donut, bool is_line);
 	SpotManager* spotManager;
 	class Graph {
 	public:
 		int obstacle_grid[GRID_X][GRID_Y] = { 0 };
-		//int distances[GRID_X][GRID_Y] = { 0 };
 		std::queue<std::pair<int, int>> queue = {};
 		std::vector<std::pair<int, int>> visited = {};
 	};
 
+	bool is_donut = false;
+	bool is_line = false;
 
-	//std::vector<int, int> goal;
-	//std::vector<int, int> start;
 	Graph planning_graph = Graph();
-	//void get_obstacles(); // populate obstacle grid with obstacles detected via keypoints - trapped_beads
-	//void set_goal(); // sets a desired end goal state
 	void bfs(std::pair<int, int> start, std::pair<int, int> goal);
 	std::vector<std::pair<int, int>> backtrack(std::pair<int, int> start, std::pair<int, int> goal);
 	void add_obstacles(std::vector<cv::KeyPoint> obstacles);
-	void get_obstacles();
+	void get_obstacles(std::pair<int, int> start, std::pair<int, int> goal);
 
 };

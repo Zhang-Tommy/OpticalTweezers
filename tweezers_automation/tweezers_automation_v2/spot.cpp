@@ -1,7 +1,10 @@
 #include "spot.h"
+#include <numbers>
 
 constexpr float SCALE_X = 0.1875 * 1.07;
-constexpr float SCALE_Y = 0.1875 * 1.08;
+constexpr float SCALE_Y = 0.1875 * 1.10;
+constexpr float ANGLE = 3 * (std::numbers::pi / 180);
+constexpr float Z_OFFSET = -8.0;
 
 // Spot Constructor with default zeros
 Spot::Spot() {
@@ -24,8 +27,11 @@ void Spot::set_spot_values(float new_vals[]) {
 
 // Modifies spot value array
 void Spot::set_new_pos(int x_pos, int y_pos) {
-	vals[0] = x_pos * SCALE_X;
-	vals[1] = -y_pos * SCALE_Y;
+	float x_new = (x_pos * SCALE_X) * cos(ANGLE) - (y_pos * SCALE_Y) * sin(ANGLE);
+	float y_new = -((x_pos * SCALE_X) * sin(ANGLE) + (y_pos * SCALE_Y) * cos(ANGLE));
+
+	vals[0] = x_new;
+	vals[1] = y_new;
 }
 
 // Sets all values of a spot to zero

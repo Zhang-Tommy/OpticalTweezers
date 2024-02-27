@@ -4,32 +4,58 @@
 #include <iomanip>
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
+#include <numbers>
 
-
+constexpr float SCALE_X = 1.07;
+constexpr float SCALE_Y = 1.10;
+constexpr float ANGLE = -3 * (std::numbers::pi / 180);
 
 extern std::vector<cv::KeyPoint> keypoints;
 extern std::mutex k;
-
 
 Planner::Planner(SpotManager* spotManager) : spotManager(spotManager) {
 
 }
 
+Planner::Planner(SpotManager* spotManager, bool donut, bool line) : spotManager(spotManager) {
+    is_donut = donut;
+    is_line = line;
+}
 
-
-void Planner::get_obstacles() {
+void Planner::get_obstacles(std::pair<int, int> start, std::pair<int, int> goal) {
     k.lock();
     // Find difference between currently tweezed beads and detected beads, these are obstacles
     std::vector<cv::KeyPoint> obstacles = keypoints;
+
+    
+
     for (auto& point : obstacles) {
         obstacles.erase(std::remove_if(obstacles.begin(), obstacles.end(),
             [&](const cv::KeyPoint& keypoint) {
+                //float x_new = (keypoint.pt.x / SCALE_X) * cos(ANGLE) - (keypoint.pt.y * SCALE_Y) * sin(ANGLE);
+                //float y_new = -((keypoint.pt.x * SCALE_X) * sin(ANGLE) + (keypoint.pt.y * SCALE_Y) * cos(ANGLE));
                 int x = static_cast<int>(keypoint.pt.x);
                 int y = static_cast<int>(keypoint.pt.y);
                 return spotManager->trapped_beads.count(std::make_pair(y, x));
             }),
             obstacles.end());
     }
+
+    // For donut traps we still think of the beads around the trap as obstacles, even though they are part of the donut trap
+    if (is_donut) {
+        // obstacles are in camera coordinates
+        int donut_radius = 70;  // this distance is in pixels (5.3pixels/um)
+        for (auto it = obstacles.begin(); it != obstacles.end();) {
+            double dist = sqrt(pow(start.first * (640.0 / GRID_X) - it->pt.x, 2) + pow(start.second * (480.0 / GRID_Y) - it->pt.y, 2));
+            if (dist <= donut_radius) {
+                it = obstacles.erase(it); // erase returns the iterator to the next element
+            }
+            else {
+                ++it; // move to the next element
+            }
+        }
+    }
+
 
     // for every obstacle
     // for int i = obstacle.x, i < obstacle.x + radius
@@ -40,6 +66,7 @@ void Planner::get_obstacles() {
     for (auto& obstacle : obstacles) {
         int obs_x = obstacle.pt.x / (640 / GRID_X);
         int obs_y = obstacle.pt.y / (480 / GRID_Y);
+        
         for (int i = obs_x - radius; i < obs_x + radius + 1; i++) {
             for (int j = obs_y - radius; j < obs_y + radius + 1; j++) {
                 if (!(i < 0 || i > GRID_X || j < 0 || j > GRID_Y)) {
