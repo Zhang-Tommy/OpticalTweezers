@@ -1,0 +1,7 @@
+UDP_PORT = 61557
+UDP_IP = '127.0.0.1'
+
+CAM_X = 640
+CAM_Y = 480
+
+CAM_TO_UM = 0.1875
