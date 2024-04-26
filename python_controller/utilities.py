@@ -10,7 +10,7 @@ def init_holo_engine():
 
     # Kill any instances of hologram engine
     os.system("taskkill /f /im  hologram_engine_64.exe")
-    subprocess.Popen([r'C:\Users\Tommy\PycharmProjects\OpticalTweezers\red_tweezers_1_4_release\hologram_engine_64.exe'])
+    subprocess.Popen([r'.\hologram_engine_64.exe'])
 
     time.sleep(1)
     with open('shader_source.txt', 'r') as file:

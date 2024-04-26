@@ -40,7 +40,7 @@ def detect_beads(image):
 
 if __name__ == "__main__":
     # We can simulate the video feed from the tweezers by playing back a recorded video
-    vid = cv2.VideoCapture(r'C:\Users\Tommy\Desktop\Tweezers Videos\Motion Planning\testing_video1.mp4')
+    vid = cv2.VideoCapture(r'.\testing_video1.mp4')
 
     while vid.isOpened():
         ret, frame = vid.read()
