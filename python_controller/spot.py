@@ -1,5 +1,4 @@
 import numpy as np
-from utilities import update_spots
 
 
 class Spot:

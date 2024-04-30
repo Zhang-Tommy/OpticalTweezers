@@ -2,50 +2,56 @@ import numpy as np
 import cv2
 import random
 import camera
+from constants import *
 global white_bg
 
-width, height = 640, 480  # Dimensions of the image
-white_bg = np.ones((height, width, 3), dtype=np.uint8) * 255
-
-bead_size = 10  # diameter in pixels
-
+white_bg = np.ones((CAM_Y, CAM_X, 3), dtype = np.uint8) * 255
 
 class Bead:
-    def __init__(self, x_start, y_start):
+    def __init__(self, x_start=None, y_start=None):
         self.is_trapped = False
         self.x = x_start
         self.y = y_start
-        self.create_bead()
+        self.bead_size = 10
+        if x_start is not None:
+            self.create_bead()
+        self.active = False
 
-    def move_bead(self, x_new, y_new):
-        cv2.circle(white_bg, (self.x, self.y), bead_size, (255, 255, 255), -1)
-        cv2.circle(white_bg, (x_new, y_new), bead_size, (0, 0, 255), -1)
+
+    def move_bead(self, x_new, y_new, color):
+        # Draw previous bead as white bead
+        cv2.circle(white_bg, (self.x, self.y), self.bead_size, (255, 255, 255), -1)
+        # Draw new bead position with correct color
+        cv2.circle(white_bg, (x_new, y_new), self.bead_size, color, -1)
         self.x = x_new
         self.y = y_new
 
     def create_bead(self):
-        cv2.circle(white_bg, (self.x, self.y), bead_size, (0, 0, 255), -1)
+        # Draw a circle with specified position and color
+        cv2.circle(white_bg, (self.x, self.y), self.bead_size, (0, 0, 255), -1)
 
     def move_randomly(self):
         if not self.is_trapped:
             offset_x = random.randint(-1, 1)
             offset_y = random.randint(-1, 1)
             # Move bead by the random offsets
-            self.move_bead(self.x + offset_x, self.y + offset_y)
+            self.move_bead(self.x + offset_x, self.y + offset_y, (0, 0, 255))
+            return [offset_x, offset_y]
         else:
-            pass
-
+            return [self.x, self.y]
 
 
 def generate_random_beads(n):
     beads = []
     for _ in range(n):
-        x_start = random.randint(0, width - 1)
-        y_start = random.randint(0, height - 1)
+        x_start = random.randint(0, CAM_X - 1)
+        y_start = random.randint(0, CAM_Y - 1)
         beads.append(Bead(x_start, y_start))
     return beads
 
+
 if __name__ == "__main__":
+    white_bg = np.ones((CAM_Y, CAM_X, 3), dtype = np.uint8) * 255
     beads = generate_random_beads(10)
 
     for i in range(100000):
@@ -55,11 +61,11 @@ if __name__ == "__main__":
             if i % 2 == 0:
                 bead.move_randomly()  # Move each bead randomly
 
-
-        beads[0].is_trapped = True
         # Display the image with the red circle
         cv2.imshow("Optical Tweezers Simulator", white_bg)
-        #print(camera.detect_beads(white_bg))
+        key_points = camera.detect_beads(white_bg)
+
+        cv2.drawKeypoints(white_bg, key_points, white_bg, (255, 0, 0))
         cv2.waitKey(10)  # Wait for any key press before closing
 
     # Close all OpenCV windows

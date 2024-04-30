@@ -1,8 +1,8 @@
 import socket, os
 from constants import *
 import subprocess, time
-"""Functions for setting uniform variables"""
 
+"""Functions for setting uniform variables"""
 def init_holo_engine():
     """Initializes hologram engine by sending shader source code and updating uniform variables
     Communicates with the hologram engine via UDP packets
@@ -25,6 +25,7 @@ def init_holo_engine():
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
 
 def send_data(message):
+    """ Send UDP packet containing message to hologram engine"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     start = '<data>\n'
     end = '\n</data>'
@@ -32,31 +33,14 @@ def send_data(message):
 
 
 def set_uniform(var_num, new_data):
+    """ Set specific uniform variables in hologram engine (configuration related) """
     start = f'<uniform id={var_num}>\n'
     end = '\n</uniform>'
     send_data(start + new_data + end)
 
 
-def update_spots(SPOTS_VEC, NUM_SPOTS, SPOTS):
-    start = '<uniform id=2>\n'
-    end = '\n</uniform>'
-
-    counter = 0
-    for spot in SPOTS:
-        for i in range(16):
-            SPOTS_VEC[i] = spot.get_spot_params()[i]
-        counter += 1
-
-    # Format the numbers with 6 decimal places and join them with a single space
-    string = ' '.join(f'{val:.6f}' for val in SPOTS_VEC[0:NUM_SPOTS * 16])
-
-    packet = start + string + end
-    #print(packet)
-    send_data(packet)
-
-
-# Converts from camera coordinates to micrometers in workspace
 def cam_to_um(cam_pos):
+    """ Converts from camera coordinates to micrometers in workspace """
     um_x = cam_pos[0] * CAM_TO_UM
     um_y = cam_pos[1] * CAM_TO_UM
 

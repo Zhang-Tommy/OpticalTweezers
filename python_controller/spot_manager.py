@@ -3,18 +3,18 @@ import numpy as np
 from utilities import *
 from constants import *
 
-""" Spot manager defines methods for tracking, creating, moving, and deleting traps"""
-
 
 class SpotManager:
+    """ Defines functions for tracking, creating, moving, and deleting traps"""
     def __init__(self):
+        # Holds spots in a 2d grid w/dimensions of camera
         self.grid = [[Spot() for _ in range(CAM_X)] for _ in range(CAM_Y)]
-        self.trapped_beads = {}  # holds x,y position (cam_coords) of trapped beads
-        self.num_spots = 0
-        self.spots_vec = np.zeros(3200)
+        self.trapped_beads = {}  # Holds x,y position (cam_coords) of trapped beads
+        self.num_spots = 0  # Number of active traps
+        self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
 
-    # Returns array holding all spot parameters
     def get_spots(self):
+        """ Updates all spot parameters (preparation for hologram engine update) """
         spot_vals = np.zeros(16*self.num_spots)
         count = 0
 
@@ -34,6 +34,7 @@ class SpotManager:
             return True
 
     def update_traps(self):
+        """ Updates hologram engine with current spot parameter data """
         self.get_spots()
         start = '<uniform id=2>\n'
         end = '\n</uniform>'
@@ -42,28 +43,28 @@ class SpotManager:
         string = ' '.join(f'{val:.6f}' for val in self.spots_vec[0:self.num_spots * 16])
 
         packet = start + string + end
-
-        # update hologram engine
-        #print(packet)
+        # Send to hologram engine
         send_data(packet)
 
     def add_spot(self, pos):
         """Creates a new spot and sends it over to the hologram engine for rendering"""
-        # add the desired spot to the spot object
-        new_spot = Spot()
-        new_spot.change_pos(cam_to_um(pos))
-        self.trapped_beads[pos] = new_spot
+        # Add the desired spot to the spot object
 
-        self.num_spots += 1
+        if self.check_bounds(pos):
+            new_spot = Spot()
+            new_spot.change_pos(cam_to_um(pos))
+            self.trapped_beads[pos] = new_spot
 
-        # add to the grid
-        if not self.grid[pos[0]][pos[1]].active:
-            self.grid[pos[0]][pos[1]] = new_spot
-            self.grid[pos[0]][pos[1]].active = True
-            self.update_traps()
-        else:
-            print(f'Trap already exists at {pos[0]}, {pos[1]}')
-            pass
+            self.num_spots += 1
+            print(f'{pos[0]} {pos[1]}')
+            # Add to the grid and update holo engine
+            if not self.grid[pos[0]][pos[1]].active:
+                self.grid[pos[0]][pos[1]] = new_spot
+                self.grid[pos[0]][pos[1]].active = True
+                self.update_traps()
+            else:
+                print(f'Trap already exists at {pos[0]}, {pos[1]}')
+                pass
 
     def move_trap(self, old_pos, new_pos):
         # Get the target spot object
@@ -76,6 +77,7 @@ class SpotManager:
         self.grid[new_pos[0]][new_pos[1]] = spot
         self.grid[new_pos[0]][new_pos[1]].active = True
 
+        # Send to hologram engine
         self.update_traps()
 
 

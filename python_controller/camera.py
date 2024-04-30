@@ -1,6 +1,3 @@
-from pypylon import pylon
-import pypylon.pylon as py
-import os
 import numpy as np
 import cv2
 
