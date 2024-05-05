@@ -5,6 +5,7 @@ Input: x_control,y_control
 Output: x_actual, y_actual
 """
 
+
 """
 What do we need to have?
 States: x,y from image processing. xdot, ydot from delayed calculation from two frames?
@@ -25,8 +26,8 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 import matplotlib.collections
-
-
+from typing import Callable, NamedTuple
+import collections
 
 class ContinuousTimeBeadDynamics(NamedTuple):
 
@@ -49,13 +50,13 @@ class ContinuousTimeBeadDynamics(NamedTuple):
 
         x, y = state  # x and y positions of the bead
         u_x, u_y = control  # x and y positions of the trap
-        B = 10e-8
+        b = 10e-8
         k = 10e-5
         return jnp.array([
-            (-k * x + k * u_x) / B
-            (-k * y + k * u_y) / B
+            (-k * x + k * u_x) / b,
+            (-k * y + k * u_y) / b
         ])
-    
+
 
 class ContinuousTimeObstacleDynamics(NamedTuple):
 
@@ -66,7 +67,7 @@ class ContinuousTimeObstacleDynamics(NamedTuple):
         gamma = 6πηr : drag coefficient from Stoke's law for a spherical bead
           η : viscosity of fluid
           r : radius of bead
-        
+
         chi = √((2 * gamma * K_B * T) / dt) : scaling constant
           K_B = 1.3806e-23 J/K : Boltzmann constant
           T : temperature of fluid
@@ -93,12 +94,12 @@ class ContinuousTimeObstacleDynamics(NamedTuple):
         N_randx = np.random.normal(mu, sigma)
         N_randy = np.random.normal(mu, sigma)
 
-        gamma = -(6 * np.pi * nu * r)  # drag coefficient
+        gamma = 6 * np.pi * nu * r  # drag coefficient
         chi = np.sqrt((2 * gamma * K_B * T) / dt)  # scaling constant
 
         return jnp.array([
-            (-gamma / m) * v_x + (chi / m) * N_randx
-            (-gamma / m) * v_y + (chi / m) * N_randy            
+            (-gamma / m) * v_x + (chi / m) * N_randx,
+            (-gamma / m) * v_y + (chi / m) * N_randy
         ])
 
 
@@ -112,14 +113,14 @@ class LinearDynamics(NamedTuple):
     def __call__(self, x, u, k=None):
         f_x, f_u = self
         return f_x @ x + f_u @ u if k is None else self[k](x, u)  # Ax + Bu
-    
+
 class EulerIntegrator(NamedTuple):
     """Discrete time dynamics from time-invariant continuous time dynamics using the Euler method."""
     ode: Callable
     dt: float
 
     @jax.jit
-    def __call__(self, x, u, k):
+    def __call__(self, x, u):
         return x + self.dt * self.ode(x, u)
 
 class RK4Integrator(NamedTuple):
@@ -127,10 +128,23 @@ class RK4Integrator(NamedTuple):
     ode: Callable
     dt: float
 
-    @jax.jit  # optimize using just-in-time compilation
-    def __call__(self, x, u, k):
+    #@jax.jit  # optimize using just-in-time compilation
+    def __call__(self, x, u):
         k1 = self.dt * self.ode(x, u)
         k2 = self.dt * self.ode(x + k1 / 2, u)
         k3 = self.dt * self.ode(x + k2 / 2, u)
         k4 = self.dt * self.ode(x + k3, u)
+        return x + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+
+class RK4IntegratorObs(NamedTuple):
+    """Discrete time dynamics from time-invariant continuous time dynamics using a 4th order Runge-Kutta method."""
+    ode: Callable
+    dt: float
+
+    #@jax.jit  # optimize using just-in-time compilation
+    def __call__(self, x, dt):
+        k1 = self.dt * self.ode(x, dt)
+        k2 = self.dt * self.ode(x + k1 / 2, dt)
+        k3 = self.dt * self.ode(x + k2 / 2, dt)
+        k4 = self.dt * self.ode(x + k3, dt)
         return x + (k1 + 2 * k2 + 2 * k3 + k4) / 6

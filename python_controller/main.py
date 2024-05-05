@@ -49,7 +49,7 @@ def holo(trap_parent, kp_child):
 def simulator(trap_child, kp_parent):
     """ Controls the simulator visualization w/random bead distribution """
     sm = SimManager()
-    number_of_beads = 10
+    number_of_beads = 100
 
     for _ in range(number_of_beads):
         x_start = random.randint(0, CAM_Y - 1)
