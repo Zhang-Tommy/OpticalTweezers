@@ -1,4 +1,5 @@
 import functools
+from IPython.display import display
 
 import jax
 import jax.numpy as jnp
@@ -8,7 +9,7 @@ np.seterr(invalid="ignore")
 import matplotlib.pyplot as plt; plt.rcParams.update({'font.size': 20})
 import matplotlib.collections
 import matplotlib.transforms
-from ipywidgets import interact
+from ipywidgets import interact, interactive
 
 from typing import Callable, NamedTuple
 
@@ -278,25 +279,116 @@ class Asteroid(NamedTuple):
 
 class Environment(NamedTuple):
     asteroids: Asteroid
-    ship_radius: jnp.array
-    sensing_radius: jnp.array
+    obj_bead_radius: float
+    bubble_radius: float
     bounds: jnp.array
 
     @classmethod
-    def create(cls, num_asteroids, ship_radius=1.0, sensing_radius=5, bounds=(50, 40)):
+    def create(cls, num_asteroids, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
         bounds = np.array(bounds)
         return cls(
             Asteroid(
                 np.random.rand(num_asteroids, 2) * bounds,
                 np.ones(num_asteroids),
                 np.random.randn(num_asteroids, 2),
-            ), ship_radius, sensing_radius, bounds)
+            ), obj_bead_radius, bubble_radius, bounds)
 
     def at_time(self, time):
         return self._replace(asteroids=self.asteroids.at_time(time))
 
     def wrap_vector(self, vector):
         return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
+    
+
+class Environment(NamedTuple):
+    asteroids: Asteroid
+    obj_bead_radius: float
+    bubble_radius: float
+    bounds: jnp.array
+
+    @classmethod
+    def create(cls, num_asteroids, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
+        bounds = np.array(bounds)
+        return cls(
+            Asteroid(
+                np.random.rand(num_asteroids, 2) * bounds,
+                np.ones(num_asteroids),
+                0,
+            ), obj_bead_radius, bubble_radius, bounds)
+
+    def at_time(self, time):
+        return self._replace(asteroids=self.asteroids.at_time(time))
+
+    def wrap_vector(self, vector):
+        return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
+    
+
+    def plot(self, state=None, plan=None, history=None, ax=None):
+        if state is None:
+            state = np.full(3, np.nan)
+        plan = np.full((0, 2), np.nan) if plan is None else plan[:, :2]
+        history = np.full((0, 2), np.nan) if history is None else history[:, :2]
+
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 8))
+            ax.set_xlim(0, self.bounds[0])
+            ax.set_ylim(0, self.bounds[1])
+            ax.set_aspect(1)
+            asteroids = ax.add_collection(
+                matplotlib.collections.PatchCollection(
+                    [plt.Circle(np.zeros(2), r) for r in self.asteroids.radius] * 4,
+                    offsets=np.zeros(2),
+                    transOffset=matplotlib.transforms.AffineDeltaTransform(ax.transData),
+                    color="black",
+                ))
+            obj_bead = ax.add_collection(
+                matplotlib.collections.PatchCollection(
+                    [plt.Circle(np.zeros(2), self.obj_bead_radius)] * 4,
+                    offsets=np.zeros(2),
+                    transOffset=matplotlib.transforms.AffineDeltaTransform(ax.transData),
+                    color="red",
+                    zorder=10,
+                ))
+            circle = ax.add_collection(
+                matplotlib.collections.PatchCollection(
+                    [plt.Circle(np.zeros(2), self.bubble_radius)] * 4,
+                    offsets=np.zeros(2),
+                    transOffset=matplotlib.transforms.AffineDeltaTransform(ax.transData),
+                    facecolor=(0, 0, 0, 0),
+                    edgecolor="black",
+                    linestyle="--",
+                    zorder=10,
+                ))
+            plan_line = ax.plot(plan[:, 0], plan[:, 1], color="green")[0]
+            history_line = ax.plot(history[:, 0], history[:, 1], color="blue")[0]
+        else:
+            fig = ax.figure
+            asteroids, obj_bead, circle = ax.collections
+            plan_line, history_line = ax.lines
+        screen_offsets = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
+        asteroids.set_offsets(
+            (self.wrap_vector(self.asteroids.center) + self.bounds * screen_offsets[:, None, :]).reshape(-1, 2))
+
+        obj_bead.set_offsets((self.wrap_vector(state[:2]) + self.bounds * screen_offsets))
+        circle.set_offsets((self.wrap_vector(state[:2]) + self.bounds * screen_offsets))
+
+        def tile_line(line):
+            if line.shape[0] == 0:
+                return line
+            irange, jrange = [
+                range(int(x[0]), int(x[1] + 1))
+                for x in zip(np.min(line, 0) // self.bounds,
+                             np.max(line, 0) // self.bounds)
+            ]
+            return np.concatenate([
+                np.pad(line - np.array([i, j]) * self.bounds, ((0, 1), (0, 0)), constant_values=np.nan)
+                for i in irange
+                for j in jrange
+            ], 0)
+
+        plan_line.set_data(*tile_line(plan).T)
+        history_line.set_data(*tile_line(history).T)
+        return fig, ax
 
 
 """ Running and Total Cost """
@@ -312,7 +404,7 @@ class RunningCost(NamedTuple):
         separation_distance = jnp.where(
             jnp.isnan(asteroids.radius), np.inf,
             jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius -
-            self.env.ship_radius)
+            self.env.obj_bead_radius)
         collision_avoidance_penalty = jnp.sum(
             jnp.where(separation_distance > 0.3, 0, 1e4 * (0.3 - separation_distance)**2))
 
@@ -374,7 +466,7 @@ def policy(state, env, dynamics, running_cost_type, terminal_cost_type, limited_
                 empty_env,
                 goal_position,
                 state[:2],
-                empty_env.sensing_radius,
+                empty_env.bubble_radius,
             ),
         ),
         state,
@@ -388,7 +480,7 @@ def policy(state, env, dynamics, running_cost_type, terminal_cost_type, limited_
                 env,
                 goal_position,
                 state[:2],
-                env.sensing_radius,
+                env.bubble_radius,
             ),
         ),
         state,
@@ -419,8 +511,8 @@ def simulate_mpc(start_state, env, dynamics, running_cost_type, terminal_cost_ty
 
 
 # Problem parameters.
-T = 1250
-dt = 0.1
+T = 50
+dt = 0.000001
 
 dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
 
@@ -435,7 +527,21 @@ states, controls = simulate_mpc(start_state, env, dynamics, RunningCost, FullHor
 #print(states)
 #print(controls)
 
-plt.plot(np.arange(0, len(controls)), controls)
-plt.plot(np.arange(0, len(states)), states)
-plt.show()
+# plt.plot(np.arange(0, len(controls)), controls)
+# plt.plot(np.arange(0, len(states)), states)
+# plt.show()
 
+# print(env.bubble_radius)
+
+# Create a figure and axes
+fig, ax = plt.subplots()
+plt.close()
+
+# Calculate the environment state at timestep 0
+k = 25   # Initial timestep
+updated_env = env.at_time(k * dt)
+
+# Plot the updated environment on the axes
+updated_env.plot(states[k])
+
+plt.show()
