@@ -4,6 +4,11 @@ import random
 import cv2
 import camera
 
+import numpy as np
+
+from beads import *
+# import time
+
 from utilities import *
 from sim_manager import SimManager
 from simulator import white_bg
@@ -17,34 +22,76 @@ def holo(trap_parent, kp_child):
     # Initialize spot manager (create, move, modify optical traps)
     sm = SpotManager()
     # Test operation of spot manager
-    x1 = 300
-    y1 = 300
+    # x1 = 300
+    # y1 = 300
 
-    x2 = 100
-    y2 = 250
+    # x2 = 100
+    # y2 = 250
 
-    sm.add_spot((x1, y1))
-    sm.add_spot((x2, y2))
-    cnt = 0
+    # sm.add_spot((x1, y1))
+    # sm.add_spot((x2, y2))
 
-    for i in range(10000):
+    traps = list(sm.trapped_beads.keys())
+
+    # kps = []
+
+    trap_parent.send(traps)
+    if kp_child.poll():
+        kps = kp_child.recv()
+
+    num_beads = len(kps)
+
+    
+
+    x = round(kps[0][0])
+    y = round(kps[0][1])
+
+    sm.add_spot((x,y))
+
+    print(type(kps))
+    print("kps:")
+    print(len(kps))
+
+
+    # start_state: 1x2 np.array
+    # env: 
+    # dynamics
+
+    T = 2000
+
+    start_state = np.array([x, y])
+    goal_position = np.array([250,200])
+
+    u_guess = gen_intial_traj(start_state, goal_position, 20).T
+    
+    dt = 1e-6
+
+    env = Environment.create(num_beads, kps)
+
+    states = controller(start_state, goal_position, u_guess, env, T, dt)
+
+
+
+    for k in range(T-1):
+
         traps = list(sm.trapped_beads.keys())
+
         trap_parent.send(traps)
         if kp_child.poll():
             kps = kp_child.recv()
 
-        #if cnt == 10:
-        #   for kp in kp_child.recv():
-        #        sm.add_spot((round(kp[0]), round(kp[1])))
+        x_curr = states[k][0]
+        y_curr = states[k][1]
+
+        x_next = states[k+1][0]
+        y_next = states[k+1][1]
+
+        sm.move_trap((x_curr, y_curr), (x_next, y_next))
+
 
         time.sleep(0.1)
-        sm.move_trap((x1, y1), (x1-2, y1-1))
-        sm.move_trap((x2, y2), (x2 - 2, y2 + 1))
-        x1 = x1 - 2
-        y1 = y1 - 1
-        x2 = x2 - 2
-        y2 = y2 + 1
-        cnt += 1
+
+
 
 def simulator(trap_child, kp_parent):
     """ Controls the simulator visualization w/random bead distribution """
@@ -56,11 +103,17 @@ def simulator(trap_child, kp_parent):
         y_start = random.randint(0, CAM_X - 1)
         sm.add_bead((x_start, y_start))
 
+
+
+
+
     traps = []
     counter = 0
-    for i in range(100000):
-        if i % 10 == 0:  # Move each bead randomly
-            sm.move_randomly()
+
+    # Hardcoded 1999 for now (=T-1)
+    for i in range(1999):
+        # if i % 10 == 0:  # Move each bead randomly
+            # sm.move_randomly()
 
         # Poll for updated trap data (non-blocking)
         if trap_child.poll():
@@ -70,6 +123,7 @@ def simulator(trap_child, kp_parent):
             # if trap is near a bead, then trap it
             sm.trap_bead((trap[0], trap[1]))
             cv2.circle(white_bg, (trap[0], trap[1]), 3, (0, 255, 0), -1)
+
 
         key_points = camera.detect_beads(white_bg)
         cv2.drawKeypoints(white_bg, key_points, white_bg, (255, 0, 0))
@@ -91,13 +145,21 @@ def simulator(trap_child, kp_parent):
 
     cv2.destroyAllWindows()
 
-def controller():
+
+def controller(start_state, goal_position, u_guess, env, T, dt):
     """ Controller for obstacle avoidance and path planning """
     # What does controller need to know?
     # State of system (coordinates of all obstacles, trapped beads)
     # Outputs: control x,y for specific bead
 
+    dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
+    
+    states, controls = simulate_mpc(start_state, goal_position, u_guess, env, dynamics, RunningCost, FullHorizonTerminalCost, False, 20, T)
 
+
+    return states
+    
+  
 
 def cam(frame_queue, kp_parent):
     """ Video playback for testing (likely not very useful anymore since we have simulator) """
@@ -137,8 +199,10 @@ if __name__ == "__main__":
     p2 = Process(target=simulator, args=(trap_child, kp_parent))
     #p3 = Process(target=cam, args=(frame_queue, kp_parent))
 
-    p1.start()
+    
+
     p2.start()
+    p1.start()
     #p3.start()
 
     p1.join()

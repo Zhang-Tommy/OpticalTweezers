@@ -10,12 +10,24 @@ def init_holo_engine():
 
     # Kill any instances of hologram engine
     os.system("taskkill /f /im  hologram_engine_64.exe")
-    subprocess.Popen([r'.\hologram_engine_64.exe'])
+
+    # Launch the new instance
+    executable_path = os.path.join(os.getcwd(), "hologram_engine_64.exe")
+    if os.path.exists(executable_path):
+        subprocess.Popen([executable_path])
+
+    # subprocess.Popen([r'.\hologram_engine_64.exe'])
+
+    # Define the path to the shader source file
+    shader_file_path = os.path.join('python_controller', 'shader_source.txt')
+    # Define the path to the uniform variables file
+    uniform_vars_file_path = os.path.join('python_controller', 'init_uniform_vars.txt')
+
 
     time.sleep(1)
-    with open('shader_source.txt', 'r') as file:
+    with open(shader_file_path, 'r') as file:
         shader_source = file.read()
-    with open('init_uniform_vars.txt', 'r') as file:
+    with open(uniform_vars_file_path, 'r') as file:
         uniform_vars = file.read()
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

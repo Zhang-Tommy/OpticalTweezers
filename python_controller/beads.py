@@ -1,3 +1,5 @@
+
+
 import functools
 from IPython.display import display
 
@@ -269,12 +271,14 @@ class ContinuousTimeBeadDynamics(NamedTuple):
 
 """ Environment Setup """
 class Asteroid(NamedTuple):
-    center: jnp.array
+    center: list
     radius: jnp.array
     velocity: jnp.array = 0
 
     def at_time(self, time):
-        return self._replace(center=self.center + self.velocity * time)
+        pass
+        # self.center += self.velocity * time
+        # return self._replace(center=self.center + self.velocity * time)
     
 
 class Environment(NamedTuple):
@@ -284,14 +288,25 @@ class Environment(NamedTuple):
     bounds: jnp.array
 
     @classmethod
-    def create(cls, num_asteroids, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
+    def create(cls, num_beads, kps, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
         bounds = np.array(bounds)
+        kps_len = len(kps)
         return cls(
             Asteroid(
-                np.random.rand(num_asteroids, 2) * bounds,
-                np.ones(num_asteroids),
+                kps,
+                np.ones(num_beads),
                 0,
             ), obj_bead_radius, bubble_radius, bounds)
+
+    # @classmethod
+    # def create(cls, num_asteroids, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
+    #     bounds = np.array(bounds)
+    #     return cls(
+    #         Asteroid(
+    #             np.random.rand(num_asteroids, 2) * bounds,
+    #             np.ones(num_asteroids),
+    #             0,
+    #         ), obj_bead_radius, bubble_radius, bounds)
 
     def at_time(self, time):
         return self._replace(asteroids=self.asteroids.at_time(time))
@@ -299,73 +314,6 @@ class Environment(NamedTuple):
     def wrap_vector(self, vector):
         return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
     
-
-    def plot(self, state=None, plan=None, history=None, ax=None):
-        if state is None:
-            state = np.full(3, np.nan)
-        plan = np.full((0, 2), np.nan) if plan is None else plan[:, :2]
-        history = np.full((0, 2), np.nan) if history is None else history[:, :2]
-
-        if ax is None:
-            fig, ax = plt.subplots(figsize=(10, 8))
-            ax.set_xlim(0, self.bounds[0])
-            ax.set_ylim(0, self.bounds[1])
-            ax.set_aspect(1)
-            asteroids = ax.add_collection(
-                matplotlib.collections.PatchCollection(
-                    [plt.Circle(np.zeros(2), r) for r in self.asteroids.radius] * 4,
-                    offsets=np.zeros(2),
-                    transOffset=matplotlib.transforms.AffineDeltaTransform(ax.transData),
-                    color="black",
-                ))
-            obj_bead = ax.add_collection(
-                matplotlib.collections.PatchCollection(
-                    [plt.Circle(np.zeros(2), self.obj_bead_radius)] * 4,
-                    offsets=np.zeros(2),
-                    transOffset=matplotlib.transforms.AffineDeltaTransform(ax.transData),
-                    color="red",
-                    zorder=10,
-                ))
-            circle = ax.add_collection(
-                matplotlib.collections.PatchCollection(
-                    [plt.Circle(np.zeros(2), self.bubble_radius)] * 4,
-                    offsets=np.zeros(2),
-                    transOffset=matplotlib.transforms.AffineDeltaTransform(ax.transData),
-                    facecolor=(0, 0, 0, 0),
-                    edgecolor="black",
-                    linestyle="--",
-                    zorder=10,
-                ))
-            plan_line = ax.plot(plan[:, 0], plan[:, 1], color="green")[0]
-            history_line = ax.plot(history[:, 0], history[:, 1], color="blue")[0]
-        else:
-            fig = ax.figure
-            asteroids, obj_bead, circle = ax.collections
-            plan_line, history_line = ax.lines
-        screen_offsets = np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
-        asteroids.set_offsets(
-            (self.wrap_vector(self.asteroids.center) + self.bounds * screen_offsets[:, None, :]).reshape(-1, 2))
-
-        obj_bead.set_offsets((self.wrap_vector(state[:2]) + self.bounds * screen_offsets))
-        circle.set_offsets((self.wrap_vector(state[:2]) + self.bounds * screen_offsets))
-
-        def tile_line(line):
-            if line.shape[0] == 0:
-                return line
-            irange, jrange = [
-                range(int(x[0]), int(x[1] + 1))
-                for x in zip(np.min(line, 0) // self.bounds,
-                             np.max(line, 0) // self.bounds)
-            ]
-            return np.concatenate([
-                np.pad(line - np.array([i, j]) * self.bounds, ((0, 1), (0, 0)), constant_values=np.nan)
-                for i in irange
-                for j in jrange
-            ], 0)
-
-        plan_line.set_data(*tile_line(plan).T)
-        history_line.set_data(*tile_line(history).T)
-        return fig, ax
 
 
 """ Running and Total Cost """
@@ -425,16 +373,16 @@ def gen_intial_traj(start_state, goal_state, N):
 
     return traj
 
-start_state = np.array([5., 6.])
-goal_position = np.array([10., 15.])
+# start_state = np.array([5., 6.])
+# goal_position = np.array([250,200])
 
-u_guess = gen_intial_traj(start_state, goal_position, 20).T
+# u_guess = gen_intial_traj(start_state, goal_position, 20).T
 """ MPC """
 @functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N"])
-def policy(state, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20):
+def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20):
     #if limited_sensing:
     #    env = env.sense(state[:2])
-    empty_env = Environment.create(0)
+    empty_env = Environment.create(0, [])
     solution = iterative_linear_quadratic_regulator(
         dynamics,
         TotalCost(
@@ -467,12 +415,12 @@ def policy(state, env, dynamics, running_cost_type, terminal_cost_type, limited_
     return controls[0], (states, controls)
 
 
-def simulate_mpc(start_state, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20, T=1250):
+def simulate_mpc(start_state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20, T=1250):
     states = [start_state]
     controls = []
     plans = []
     for t in range(T):
-        control, (mpc_states, mpc_controls) = policy(states[-1], env.at_time(t * dynamics.dt), dynamics,
+        control, (mpc_states, mpc_controls) = policy(states[-1], goal_position, u_guess, env.at_time(t * dynamics.dt), dynamics,
                                                      running_cost_type, terminal_cost_type, limited_sensing, N)
         states.append(mpc_states[1])
         controls.append(control)
@@ -487,40 +435,40 @@ def simulate_mpc(start_state, env, dynamics, running_cost_type, terminal_cost_ty
 """ """
 
 
-# Problem parameters.
-T = 50
-dt = 0.000001
+# # Problem parameters.
+# T = 50
+# dt = 0.000001
 
-dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
-
-
-
-np.random.seed(2)
-env = Environment.create(20)
-
-print(env)
+# dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
 
 
-states, controls = simulate_mpc(start_state, env, dynamics, RunningCost, FullHorizonTerminalCost)
 
-#print(states)
-#print(controls)
+# np.random.seed(2)
+# env = Environment.create(20)
 
-# plt.plot(np.arange(0, len(controls)), controls)
-# plt.plot(np.arange(0, len(states)), states)
+# print(env.asteroids)
+
+
+# states, controls = simulate_mpc(start_state, env, dynamics, RunningCost, FullHorizonTerminalCost)
+
+# #print(states)
+# #print(controls)
+
+# # plt.plot(np.arange(0, len(controls)), controls)
+# # plt.plot(np.arange(0, len(states)), states)
+# # plt.show()
+
+# # print(env.bubble_radius)
+
+# # Create a figure and axes
+# fig, ax = plt.subplots()
+# plt.close()
+
+# # Calculate the environment state at timestep 0
+# k = 25   # Initial timestep
+# updated_env = env.at_time(k * dt)
+
+# # Plot the updated environment on the axes
+# updated_env.plot(states[k])
+
 # plt.show()
-
-# print(env.bubble_radius)
-
-# Create a figure and axes
-fig, ax = plt.subplots()
-plt.close()
-
-# Calculate the environment state at timestep 0
-k = 25   # Initial timestep
-updated_env = env.at_time(k * dt)
-
-# Plot the updated environment on the axes
-updated_env.plot(states[k])
-
-plt.show()
