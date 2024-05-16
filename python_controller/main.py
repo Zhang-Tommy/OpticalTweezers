@@ -2,8 +2,10 @@ import multiprocessing
 from multiprocessing import Process
 import random
 import cv2
-import camera
+import jax
 
+import camera
+import time
 import numpy as np
 
 from beads import *
@@ -21,19 +23,10 @@ def holo(trap_parent, kp_child):
 
     # Initialize spot manager (create, move, modify optical traps)
     sm = SpotManager()
-    # Test operation of spot manager
-    # x1 = 300
-    # y1 = 300
 
-    # x2 = 100
-    # y2 = 250
-
-    # sm.add_spot((x1, y1))
-    # sm.add_spot((x2, y2))
+    #simulator_mpc(sm) # Do full horizon ilqr
 
     traps = list(sm.trapped_beads.keys())
-
-    # kps = []
 
     trap_parent.send(traps)
     if kp_child.poll():
@@ -41,79 +34,63 @@ def holo(trap_parent, kp_child):
 
     num_beads = len(kps)
 
-    
+    x_start = float(round(kps[0][0]))
+    y_start = float(round(kps[0][1]))
 
-    x = round(kps[0][0])
-    y = round(kps[0][1])
+    sm.add_spot((int(x_start), int(y_start)))
 
-    sm.add_spot((x,y))
-
-    print(type(kps))
-    print("kps:")
-    print(len(kps))
+    start_state = jnp.array([x_start, y_start])
+    goal_position = jnp.array([0, 0]) #Choose goal state
+    # Get ideal trajectory w/out obstacles to init ilqr
 
 
-    # start_state: 1x2 np.array
-    # env: 
-    # dynamics
-
-    T = 2000
-
-    start_state = np.array([x, y])
-    goal_position = np.array([250,200])
-
-    u_guess = gen_intial_traj(start_state, goal_position, 20).T
-    
     dt = 1e-6
+    kpsarray = jnp.asarray(kps)
+    env = Environment.create(num_beads, kpsarray)
 
-    env = Environment.create(num_beads, kps)
-
-    states = controller(start_state, goal_position, u_guess, env, T, dt)
-
-
-
-    for k in range(T-1):
-
+    T = 7500
+    N = 25
+    u_guess = gen_intial_traj(start_state, goal_position, N).T
+    #states = controller(start_state, goal_position, u_guess, env, T, dt)
+    state = start_state
+    dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
+    for k in range(T - 1):
+        start_time = time.time()
+        control, (mpc_states, mpc_controls) = policy(state, goal_position, u_guess, env, dynamics, RunningCost, FullHorizonTerminalCost, False, N)
+        #print("--- %s seconds ---" % (time.time() - start_time))
         traps = list(sm.trapped_beads.keys())
 
+
+        #print(f'State: {state}, Control: {control}')
+        sm.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
+        state = control
         trap_parent.send(traps)
-        if kp_child.poll():
-            kps = kp_child.recv()
-
-        x_curr = states[k][0]
-        y_curr = states[k][1]
-
-        x_next = states[k+1][0]
-        y_next = states[k+1][1]
-
-        sm.move_trap((x_curr, y_curr), (x_next, y_next))
-
-
-        time.sleep(0.1)
-
-
+        if k % 30 == 1:
+            if kp_child.poll():
+                kps = kp_child.recv()
+                kpsarray = jnp.asarray(kps)
+                num_beads = len(kps)
+            env = Environment.create(num_beads, kpsarray)
+        time.sleep(.01)
 
 def simulator(trap_child, kp_parent):
     """ Controls the simulator visualization w/random bead distribution """
     sm = SimManager()
-    number_of_beads = 100
+    number_of_beads = 50
 
     for _ in range(number_of_beads):
         x_start = random.randint(0, CAM_Y - 1)
         y_start = random.randint(0, CAM_X - 1)
         sm.add_bead((x_start, y_start))
 
-
-
-
-
     traps = []
-    counter = 0
-
+    sm.add_bead((0, 0))
+    sm.trap_bead((0, 0))
     # Hardcoded 1999 for now (=T-1)
-    for i in range(1999):
-        # if i % 10 == 0:  # Move each bead randomly
-            # sm.move_randomly()
+    i = 0
+    while True:
+        if i % 10 == 0:  # Move each bead randomly
+            sm.move_randomly()
 
         # Poll for updated trap data (non-blocking)
         if trap_child.poll():
@@ -136,12 +113,11 @@ def simulator(trap_child, kp_parent):
         for kp in key_points:
             points.append([kp.pt[0], kp.pt[1]])
 
-        counter += 1
-
-        if counter % 10 == 0:
+        if i % 30 == 0:
             kp_parent.send(points)
 
         cv2.waitKey(10)
+        i+=1
 
     cv2.destroyAllWindows()
 
@@ -159,7 +135,53 @@ def controller(start_state, goal_position, u_guess, env, T, dt):
 
     return states
     
-  
+def simulator_mpc(sm):
+    traps = list(sm.trapped_beads.keys())
+
+    trap_parent.send(traps)
+    if kp_child.poll():
+        kps = kp_child.recv()
+
+    num_beads = len(kps)
+
+    x = float(round(kps[0][0]))
+    y = float(round(kps[0][1]))
+
+    sm.add_spot((int(x), int(y)))
+
+    T = 7500
+
+    start_state = jnp.array([x, y])
+    print(start_state)
+    goal_position = jnp.array([0, 0])
+
+    u_guess = gen_intial_traj(start_state, goal_position, 20).T
+
+    dt = 1e-6
+    kpsarray = jnp.asarray(kps)
+    # kpsarray = kpsarray.at[:, 1].set(480 - kpsarray[:, 1])
+
+    # print(kpsarray)
+    env = Environment.create(num_beads, kpsarray)
+
+    states = controller(start_state, goal_position, u_guess, env, T, dt)
+
+    for k in range(T - 1):
+        traps = list(sm.trapped_beads.keys())
+
+        trap_parent.send(traps)
+        if kp_child.poll():
+            kps = kp_child.recv()
+
+        x_curr = int(states[k][0])
+        y_curr = int(states[k][1])
+
+        x_next = int(states[k + 1][0])
+        y_next = int(states[k + 1][1])
+        # print(f'X:{x_next}  Y:{y_next}')
+        sm.move_trap((x_curr, y_curr), (x_next, y_next))
+
+        time.sleep(0.01)
 
 def cam(frame_queue, kp_parent):
     """ Video playback for testing (likely not very useful anymore since we have simulator) """

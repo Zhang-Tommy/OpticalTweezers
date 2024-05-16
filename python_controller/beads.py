@@ -92,6 +92,8 @@ def rollout_state_feedback_policy(dynamics, policy, x0, step_range, x_nom=None, 
     def scan_fn(x, k):
         u = policy(x, k) if x_nom is None else u_nom[k] + policy(x - x_nom[k], k)
         x1 = dynamics(x, u, k)
+        #jax.debug.print("u = {dist}",dist=u)
+        #jax.debug.print("x1 = {dist}", dist = x1)
         return (x1, (x1, u))
 
     xs, us = jax.lax.scan(scan_fn, x0, step_range)[1]
@@ -271,14 +273,14 @@ class ContinuousTimeBeadDynamics(NamedTuple):
 
 """ Environment Setup """
 class Asteroid(NamedTuple):
-    center: list
+    center: jnp.array
     radius: jnp.array
-    velocity: jnp.array = 0
+    velocity: jnp.array
 
     def at_time(self, time):
-        pass
-        # self.center += self.velocity * time
-        # return self._replace(center=self.center + self.velocity * time)
+
+        #self.center += self.velocity * time
+        return self._replace(center=self.center)
     
 
 class Environment(NamedTuple):
@@ -288,32 +290,22 @@ class Environment(NamedTuple):
     bounds: jnp.array
 
     @classmethod
-    def create(cls, num_beads, kps, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
-        bounds = np.array(bounds)
-        kps_len = len(kps)
+    def create(cls, num_beads, kpsarray, obj_bead_radius=5.0, bubble_radius=5.0, bounds=(640, 480)):
+        bounds = jnp.array(bounds)
+        #kpsarray = jnp.array(kpsarray)
+        #jax.debug.print("state = {dist}", dist = kpsarray)
         return cls(
             Asteroid(
-                kps,
-                np.ones(num_beads),
-                0,
+                np.reshape(kpsarray, (num_beads, 2)), # np.random.rand(num_beads, 2) * bounds
+                20*np.ones(num_beads),
+                np.zeros(num_beads),
             ), obj_bead_radius, bubble_radius, bounds)
-
-    # @classmethod
-    # def create(cls, num_asteroids, obj_bead_radius=1.0, bubble_radius=3.0, bounds=(50, 40)):
-    #     bounds = np.array(bounds)
-    #     return cls(
-    #         Asteroid(
-    #             np.random.rand(num_asteroids, 2) * bounds,
-    #             np.ones(num_asteroids),
-    #             0,
-    #         ), obj_bead_radius, bubble_radius, bounds)
 
     def at_time(self, time):
         return self._replace(asteroids=self.asteroids.at_time(time))
 
     def wrap_vector(self, vector):
         return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
-    
 
 
 """ Running and Total Cost """
@@ -324,14 +316,16 @@ class RunningCost(NamedTuple):
     def __call__(self, state, control, step):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
-        asteroids = self.env.asteroids.at_time(step * self.dt)
+        asteroids = self.env.asteroids.at_time(step) #  * self.dt
 
+        #jax.debug.print("state = {dist}", dist = asteroids)
+        #jax.debug.print("center = {dist}", dist = asteroids.center)
         separation_distance = jnp.where(
             jnp.isnan(asteroids.radius), np.inf,
             jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius -
             self.env.obj_bead_radius)
         collision_avoidance_penalty = jnp.sum(
-            jnp.where(separation_distance > 0.3, 0, 1e4 * (0.3 - separation_distance)**2))
+            jnp.where(separation_distance > 2, 0, 1e4 * (2 - separation_distance)**2))
 
         u_x, u_y = control
 
@@ -340,14 +334,14 @@ class RunningCost(NamedTuple):
 
         u_x_max_penalty = jnp.where(u_x > 120, 1e8, 0)
         u_y_max_penalty = jnp.where(u_y > 120, 1e8, 0)
-        x_dist = jnp.abs(state[0] - u_x)
-        y_dist = jnp.abs(state[1] - u_y)
+        x_dist = 8e2*(state[0] - u_x) ** 2
+        y_dist = 8e2*(state[1] - u_y) ** 2
 
         #jax.debug.print("Dist = {dist}",dist=dist)
 
         control_penalty = jnp.where(x_dist > 8, 1e8, 0) + jnp.where(y_dist > 8, 1e8, 0)
 
-        return collision_avoidance_penalty + u_x_penalty + u_y_penalty #+ u_x_max_penalty + u_y_max_penalty# + control_penalty
+        return collision_avoidance_penalty + x_dist + y_dist #+ u_x_max_penalty + u_y_max_penalty# + control_penalty
 
 
 class FullHorizonTerminalCost(NamedTuple):
