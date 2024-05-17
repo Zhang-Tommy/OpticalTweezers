@@ -297,7 +297,7 @@ class Environment(NamedTuple):
         return cls(
             Asteroid(
                 np.reshape(kpsarray, (num_beads, 2)), # np.random.rand(num_beads, 2) * bounds
-                20*np.ones(num_beads),
+                10*np.ones(num_beads),
                 np.zeros(num_beads),
             ), obj_bead_radius, bubble_radius, bounds)
 
@@ -325,7 +325,7 @@ class RunningCost(NamedTuple):
             jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius -
             self.env.obj_bead_radius)
         collision_avoidance_penalty = jnp.sum(
-            jnp.where(separation_distance > 2, 0, 1e4 * (2 - separation_distance)**2))
+            jnp.where(separation_distance > 10, 0, 1e4 * (10 - separation_distance)**2))
 
         u_x, u_y = control
 
@@ -334,15 +334,26 @@ class RunningCost(NamedTuple):
 
         u_x_max_penalty = jnp.where(u_x > 120, 1e8, 0)
         u_y_max_penalty = jnp.where(u_y > 120, 1e8, 0)
-        x_dist = 8e2*(state[0] - u_x) ** 2
-        y_dist = 8e2*(state[1] - u_y) ** 2
 
-        #jax.debug.print("Dist = {dist}",dist=dist)
+        x_dist = 5e2*(state[0] - u_x) ** 2
+        y_dist = 5e2*(state[1] - u_y) ** 2
 
-        control_penalty = jnp.where(x_dist > 8, 1e8, 0) + jnp.where(y_dist > 8, 1e8, 0)
+        #control_penalty = jnp.where(x_dist > 1, 1e4, 0) + jnp.where(y_dist > 1, 1e4, 0)
 
-        return collision_avoidance_penalty + x_dist + y_dist #+ u_x_max_penalty + u_y_max_penalty# + control_penalty
+        return collision_avoidance_penalty + x_dist + y_dist# + control_penalty
 
+class MPCTerminalCost(NamedTuple):
+    env: Environment
+    goal_position: jnp.array
+
+    @classmethod
+    def create_ignoring_extra_args(cls, env, goal_position, *args, **kwargs):
+        return cls(env, goal_position)
+
+    def __call__(self, state):
+        distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+        goal_penalty = jnp.where(distance_to_goal > 10, 2 * distance_to_goal - 1, distance_to_goal**2)
+        return 1000*(goal_penalty)
 
 class FullHorizonTerminalCost(NamedTuple):
     env: Environment
@@ -353,7 +364,7 @@ class FullHorizonTerminalCost(NamedTuple):
         return cls(env, goal_position)
 
     def __call__(self, state):
-        return 1000 * (jnp.sum(jnp.square(state[:2] - self.goal_position)) + state[3]**2)
+        return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
 # Generate an initial guess for the control sequence
 def gen_intial_traj(start_state, goal_state, N):
@@ -367,12 +378,8 @@ def gen_intial_traj(start_state, goal_state, N):
 
     return traj
 
-# start_state = np.array([5., 6.])
-# goal_position = np.array([250,200])
-
-# u_guess = gen_intial_traj(start_state, goal_position, 20).T
 """ MPC """
-@functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N"])
+@functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N", "dynamics"])
 def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20):
     #if limited_sensing:
     #    env = env.sense(state[:2])

@@ -27,51 +27,51 @@ def holo(trap_parent, kp_child):
     #simulator_mpc(sm) # Do full horizon ilqr
 
     traps = list(sm.trapped_beads.keys())
-
     trap_parent.send(traps)
+
     if kp_child.poll():
         kps = kp_child.recv()
+    num_beads = len(kps) - 1
 
-    num_beads = len(kps)
+    # Choose first detected bead as our target bead
+    x_start = float(kps[0][0])
+    y_start = float(kps[0][1])
 
-    x_start = float(round(kps[0][0]))
-    y_start = float(round(kps[0][1]))
-
+    # Trap the target bead
     sm.add_spot((int(x_start), int(y_start)))
 
+    # Define start and goal states
     start_state = jnp.array([x_start, y_start])
-    goal_position = jnp.array([0, 0]) #Choose goal state
-    # Get ideal trajectory w/out obstacles to init ilqr
-
+    goal_position = jnp.array([0, 0])
 
     dt = 1e-6
+
     kpsarray = jnp.asarray(kps)
+    kpsarray = kpsarray[kpsarray != start_state]
     env = Environment.create(num_beads, kpsarray)
 
     T = 7500
-    N = 25
+    N = 100
     u_guess = gen_intial_traj(start_state, goal_position, N).T
-    #states = controller(start_state, goal_position, u_guess, env, T, dt)
+
     state = start_state
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
+
     for k in range(T - 1):
-        start_time = time.time()
-        control, (mpc_states, mpc_controls) = policy(state, goal_position, u_guess, env, dynamics, RunningCost, FullHorizonTerminalCost, False, N)
-        #print("--- %s seconds ---" % (time.time() - start_time))
+        control, _ = policy(state, goal_position, u_guess, env, dynamics, RunningCost, FullHorizonTerminalCost, False, N)
         traps = list(sm.trapped_beads.keys())
-
-
-        #print(f'State: {state}, Control: {control}')
+        print(f'State: {state}, Control: {control}')
         sm.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
         state = control
         trap_parent.send(traps)
-        if k % 30 == 1:
+        if k % 10 == 1:
+
             if kp_child.poll():
                 kps = kp_child.recv()
                 kpsarray = jnp.asarray(kps)
                 num_beads = len(kps)
-            env = Environment.create(num_beads, kpsarray)
-        time.sleep(.01)
+                env.create(num_beads, kpsarray)
+        time.sleep(.005)
 
 def simulator(trap_child, kp_parent):
     """ Controls the simulator visualization w/random bead distribution """
@@ -84,9 +84,9 @@ def simulator(trap_child, kp_parent):
         sm.add_bead((x_start, y_start))
 
     traps = []
-    sm.add_bead((0, 0))
-    sm.trap_bead((0, 0))
-    # Hardcoded 1999 for now (=T-1)
+    sm.add_bead((479, 50))
+    sm.trap_bead((479, 50))
+
     i = 0
     while True:
         if i % 10 == 0:  # Move each bead randomly
@@ -113,10 +113,10 @@ def simulator(trap_child, kp_parent):
         for kp in key_points:
             points.append([kp.pt[0], kp.pt[1]])
 
-        if i % 30 == 0:
+        if i % 10 == 0:
             kp_parent.send(points)
 
-        cv2.waitKey(10)
+        cv2.waitKey(5)
         i+=1
 
     cv2.destroyAllWindows()
@@ -127,12 +127,8 @@ def controller(start_state, goal_position, u_guess, env, T, dt):
     # What does controller need to know?
     # State of system (coordinates of all obstacles, trapped beads)
     # Outputs: control x,y for specific bead
-
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
-    
     states, controls = simulate_mpc(start_state, goal_position, u_guess, env, dynamics, RunningCost, FullHorizonTerminalCost, False, 20, T)
-
-
     return states
     
 def simulator_mpc(sm):
@@ -169,7 +165,9 @@ def simulator_mpc(sm):
     for k in range(T - 1):
         traps = list(sm.trapped_beads.keys())
 
-        trap_parent.send(traps)
+        if k % 10 == 1:
+            trap_parent.send(traps)
+
         if kp_child.poll():
             kps = kp_child.recv()
 
