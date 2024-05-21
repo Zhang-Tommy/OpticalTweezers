@@ -15,6 +15,7 @@ from utilities import *
 from sim_manager import SimManager
 from simulator import white_bg
 from spot_manager import SpotManager
+from mpc import ContinuousTimeObstacleDynamics
 
 def holo(trap_parent, kp_child):
     """ Controls hologram engine and creating traps """
@@ -47,11 +48,11 @@ def holo(trap_parent, kp_child):
     dt = 1e-6
 
     kpsarray = jnp.asarray(kps)
-    kpsarray = kpsarray[kpsarray != start_state]
+    kpsarray = kpsarray[kpsarray != start_state]  # remove start state from keypoints
     env = Environment.create(num_beads, kpsarray)
 
     T = 7500
-    N = 100
+    N = 500
     u_guess = gen_intial_traj(start_state, goal_position, N).T
 
     state = start_state
@@ -62,15 +63,14 @@ def holo(trap_parent, kp_child):
         traps = list(sm.trapped_beads.keys())
         print(f'State: {state}, Control: {control}')
         sm.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
-        state = control
+        state = control  # The control is the position of the bead
         trap_parent.send(traps)
-        if k % 10 == 1:
-
+        if k % 10 == 1:  # "Synchronized" with random bead movement
             if kp_child.poll():
                 kps = kp_child.recv()
                 kpsarray = jnp.asarray(kps)
                 num_beads = len(kps)
-                env.create(num_beads, kpsarray)
+                env.create(num_beads, kpsarray)  # Update environment
         time.sleep(.005)
 
 def simulator(trap_child, kp_parent):
@@ -78,19 +78,22 @@ def simulator(trap_child, kp_parent):
     sm = SimManager()
     number_of_beads = 50
 
+    dt = 0.0015
+
     for _ in range(number_of_beads):
         x_start = random.randint(0, CAM_Y - 1)
         y_start = random.randint(0, CAM_X - 1)
         sm.add_bead((x_start, y_start))
 
     traps = []
-    sm.add_bead((479, 50))
-    sm.trap_bead((479, 50))
+    sm.add_bead((0, 0))
+    sm.trap_bead((0, 0))
 
     i = 0
+    dynamics = ContinuousTimeObstacleDynamics()
     while True:
         if i % 10 == 0:  # Move each bead randomly
-            sm.move_randomly()
+            sm.brownian_move(dt, dynamics)
 
         # Poll for updated trap data (non-blocking)
         if trap_child.poll():
@@ -116,7 +119,7 @@ def simulator(trap_child, kp_parent):
         if i % 10 == 0:
             kp_parent.send(points)
 
-        cv2.waitKey(5)
+        cv2.waitKey(5)  # Millisecond delay
         i+=1
 
     cv2.destroyAllWindows()

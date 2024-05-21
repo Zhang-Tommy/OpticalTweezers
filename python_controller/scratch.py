@@ -9,49 +9,30 @@ x0 = np.array([0, 0]).T
 u0 = np.array([0, 0]).T
 
 dynamics = mpc.ContinuousTimeObstacleDynamics()
-dt = 1  # 100 pts/second
-#mpc.EulerIntegrator(dynamics, 0.1)
+# Steve Brunton has the solution
 
-T = 5000  # 50 pts
+dt = 0.000001  # 100 pts/second
+
+T = 500  # 50 pts
 
 # 50pts 1 um/pt
-states = [x0]
-#np.zeros((2,1))
-controls = []
+velocity = [x0]
+position = []
 
-for i in range(T):
-    controls.append(np.array([5, i * 1e-6]).T)
-
+v_next = 0
+x_next = 0
 for k in range(T):
-    x_next = mpc.RK4IntegratorObs(dynamics, dt)(states[k], dt)
-    states.append(x_next)
+    a_next = mpc.RK4IntegratorObs(dynamics, dt)(velocity[k], dt)
+    v_next = dt*a_next + v_next
+    x_next = dt*v_next + x_next
+    velocity.append(v_next)
+    position.append(x_next)
 
-print(states)
-print(controls)
+velocity = np.array(velocity)
+position = np.array(position)
 
-states = np.array(states)
-controls = np.array(controls)
-
-# Plotting states
-plt.figure(figsize=(10, 6))
-plt.subplot(2, 1, 1)
-plt.plot(states[:, 0], label='Position (x)')
-#plt.plot(states[:, 1], label='Position (u_x)')
-plt.title('States Over Time')
-plt.xlabel('Time')
-plt.ylabel('Value')
-plt.legend()
-
-# Plotting controls
-plt.subplot(2, 1, 2)
-#plt.plot(controls[:, 1], label='Position (y)')
-plt.plot(states[:, 1], label='Position (u_y)')
-plt.title('Controls Over Time')
-plt.xlabel('Time')
-plt.ylabel('Value')
-plt.legend()
-
-plt.tight_layout()
+plt.plot(np.arange(0, len(position)), position)
+plt.plot(np.arange(0, len(velocity)), velocity)
 plt.show()
 
 

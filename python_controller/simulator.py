@@ -4,7 +4,7 @@ import random
 import camera
 from constants import *
 global white_bg
-
+import mpc
 white_bg = np.ones((CAM_Y, CAM_X, 3), dtype = np.uint8) * 255
 
 class Bead:
@@ -16,6 +16,11 @@ class Bead:
         if x_start is not None:
             self.create_bead()
         self.active = False
+        self.velocity = [np.array([0, 0]).T]
+        self.position = []
+
+        self.v_next = 0
+        self.x_next = 0
 
 
     def move_bead(self, x_new, y_new, color):
@@ -40,6 +45,11 @@ class Bead:
         else:
             return [self.x, self.y]
 
+    def get_next_pos(self, dt, dynamics):
+        a_next = mpc.RK4IntegratorObs(dynamics, dt)(self.velocity[0], dt)
+        v_next = dt * a_next + self.v_next
+        x_next = dt * v_next + self.x_next
+        return x_next
 
 def generate_random_beads(n):
     beads = []

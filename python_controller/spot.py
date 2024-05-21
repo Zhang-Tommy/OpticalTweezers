@@ -9,6 +9,7 @@ class Spot:
         self.spot_vec = np.zeros(16)
         self.spot_vec[4] = 1.0  # intensity
         self.spot_vec[10] = 1.0  # na.r
+        self.spot_vec[2] = -8.0  # z-axis offset
         self.active = False
 
     def change_pos(self, pos):

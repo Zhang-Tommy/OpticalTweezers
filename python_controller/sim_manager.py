@@ -3,7 +3,7 @@ import numpy as np
 from constants import *
 from simulator import Bead
 import random
-
+import mpc
 
 class SimManager:
     """ Defines functions for tracking, creating, moving, and deleting beads"""
@@ -24,6 +24,13 @@ class SimManager:
             # Move bead by the random offsets
 
             bead.move_bead(bead.x + offset_x, bead.y + offset_y, (0, 0, 255))
+
+    def brownian_move(self, dt, dynamics):
+        """ Move all freely diffusing beads using Langevin equation"""
+        for bead in list(self.free_beads.values()):
+            x_next = bead.get_next_pos(dt, dynamics)
+
+            bead.move_bead(bead.x + int(x_next[0]), bead.y + int(x_next[1]), (0, 0, 255))
 
 
     def get_spots(self):

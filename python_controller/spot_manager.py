@@ -49,10 +49,14 @@ class SpotManager:
     def add_spot(self, pos):
         """Creates a new spot and sends it over to the hologram engine for rendering"""
         # Add the desired spot to the spot object
+        offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
+        offset_y = -((pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
+
+        new_pos_scaled = [offset_x, offset_y]
 
         if self.check_bounds(pos):
             new_spot = Spot()
-            new_spot.change_pos(cam_to_um(pos))
+            new_spot.change_pos(cam_to_um(new_pos_scaled))
             self.trapped_beads[pos] = new_spot
 
             self.num_spots += 1
@@ -67,11 +71,17 @@ class SpotManager:
                 pass
 
     def move_trap(self, old_pos, new_pos):
+        pos = new_pos
+        offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
+        offset_y = -((pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
+
+        new_pos_scaled = [offset_x, offset_y]
+
         # Get the target spot object
         spot = self.grid[old_pos[0]][old_pos[1]]
         self.grid[old_pos[0]][old_pos[1]].active = False
         self.trapped_beads.pop(old_pos)
-        spot.change_pos(cam_to_um(new_pos))
+        spot.change_pos(cam_to_um(new_pos_scaled))
 
         self.trapped_beads[new_pos] = spot
         self.grid[new_pos[0]][new_pos[1]] = spot
