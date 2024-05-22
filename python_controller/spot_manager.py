@@ -8,7 +8,7 @@ class SpotManager:
     """ Defines functions for tracking, creating, moving, and deleting traps"""
     def __init__(self):
         # Holds spots in a 2d grid w/dimensions of camera
-        self.grid = [[Spot() for _ in range(CAM_X)] for _ in range(CAM_Y)]
+        self.grid = [[Spot() for _ in range(CAM_Y)] for _ in range(CAM_X)]
         self.trapped_beads = {}  # Holds x,y position (cam_coords) of trapped beads
         self.num_spots = 0  # Number of active traps
         self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
@@ -50,7 +50,7 @@ class SpotManager:
         """Creates a new spot and sends it over to the hologram engine for rendering"""
         # Add the desired spot to the spot object
         offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
-        offset_y = -((pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
+        offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
 
         new_pos_scaled = [offset_x, offset_y]
 
@@ -73,7 +73,7 @@ class SpotManager:
     def move_trap(self, old_pos, new_pos):
         pos = new_pos
         offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
-        offset_y = -((pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
+        offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
 
         new_pos_scaled = [offset_x, offset_y]
 

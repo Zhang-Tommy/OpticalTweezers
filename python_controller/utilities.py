@@ -14,16 +14,16 @@ def init_holo_engine():
     # Launch the new instance
     executable_path = os.path.join(os.getcwd(), "hologram_engine_64.exe")
     if os.path.exists(executable_path):
-        subprocess.Popen([executable_path])
+        holo_process = subprocess.Popen([executable_path])
 
     # subprocess.Popen([r'.\hologram_engine_64.exe'])
 
     # Define the path to the shader source file
-    shader_file_path = os.path.join('python_controller', 'shader_source.txt')
+    #shader_file_path = os.path.join('python_controller', 'shader_source.txt')
     # Define the path to the uniform variables file
-    uniform_vars_file_path = os.path.join('python_controller', 'init_uniform_vars.txt')
-
-
+    #uniform_vars_file_path = os.path.join('python_controller', 'init_uniform_vars.txt')
+    shader_file_path = 'shader_source.txt'
+    uniform_vars_file_path = 'init_uniform_vars.txt'
     time.sleep(1)
     with open(shader_file_path, 'r') as file:
         shader_source = file.read()
@@ -35,6 +35,8 @@ def init_holo_engine():
 
     server_socket.sendto(str.encode(shader_source), ('127.0.0.1', 61557))
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
+    server_socket.close()
+    return holo_process
 
 def send_data(message):
     """ Send UDP packet containing message to hologram engine"""
@@ -42,6 +44,7 @@ def send_data(message):
     start = '<data>\n'
     end = '\n</data>'
     server_socket.sendto(str.encode(start + message + end), (UDP_IP, UDP_PORT))
+    server_socket.close()
 
 
 def set_uniform(var_num, new_data):

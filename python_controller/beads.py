@@ -242,6 +242,18 @@ def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxi
         "num_iterations": i,
     }
 
+class RK4IntegratorObs(NamedTuple):
+    """Discrete time dynamics from time-invariant continuous time dynamics using a 4th order Runge-Kutta method."""
+    ode: Callable
+    dt: float
+
+    #@jax.jit  # optimize using just-in-time compilation
+    def __call__(self, x, dt):
+        k1 = self.dt * self.ode(x, dt)
+        k2 = self.dt * self.ode(x + k1 / 2, dt)
+        k3 = self.dt * self.ode(x + k2 / 2, dt)
+        k4 = self.dt * self.ode(x + k3, dt)
+        return x + (k1 + 2 * k2 + 2 * k3 + k4) / 6
 
 class ContinuousTimeBeadDynamics(NamedTuple):
     def __call__(self, state, control):
@@ -296,7 +308,7 @@ class Environment(NamedTuple):
         #jax.debug.print("state = {dist}", dist = kpsarray)
         return cls(
             Asteroid(
-                np.reshape(kpsarray, (num_beads, 2)), # np.random.rand(num_beads, 2) * bounds
+                np.reshape(kpsarray, (num_beads, 2)),  # np.random.rand(num_beads, 2) * bounds
                 10*np.ones(num_beads),
                 np.zeros(num_beads),
             ), obj_bead_radius, bubble_radius, bounds)
@@ -325,7 +337,7 @@ class RunningCost(NamedTuple):
             jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius -
             self.env.obj_bead_radius)
         collision_avoidance_penalty = jnp.sum(
-            jnp.where(separation_distance > 10, 0, 1e4 * (10 - separation_distance)**2))
+            jnp.where(separation_distance > 15, 0, 1e4 * (15 - separation_distance)**2))
 
         u_x, u_y = control
 
@@ -335,8 +347,8 @@ class RunningCost(NamedTuple):
         u_x_max_penalty = jnp.where(u_x > 120, 1e8, 0)
         u_y_max_penalty = jnp.where(u_y > 120, 1e8, 0)
 
-        x_dist = 5e2*(state[0] - u_x) ** 2
-        y_dist = 5e2*(state[1] - u_y) ** 2
+        x_dist = 4e2*(state[0] - u_x) ** 2
+        y_dist = 4e2*(state[1] - u_y) ** 2
 
         #control_penalty = jnp.where(x_dist > 1, 1e4, 0) + jnp.where(y_dist > 1, 1e4, 0)
 

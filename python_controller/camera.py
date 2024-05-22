@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-
+from harvesters.core import Harvester
 
 # Input video frame and output coordinates of detected beads
 def detect_beads(image):
@@ -34,18 +34,38 @@ def detect_beads(image):
 
     return key_points
 
-
-if __name__ == "__main__":
+def camera_main():
     # We can simulate the video feed from the tweezers by playing back a recorded video
-    vid = cv2.VideoCapture(r'.\testing_video1.mp4')
+    # vid = cv2.VideoCapture(r'.\testing_video1.mp4')
+    vid = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
     while vid.isOpened():
         ret, frame = vid.read()
         if ret:
-            key_points = detect_beads(frame)
-            cv2.drawKeypoints(frame, key_points, frame, (0, 0, 255), flags = cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
+            # key_points = detect_beads(frame)
+            # cv2.drawKeypoints(frame, key_points, frame, (0, 0, 255), flags = cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
             cv2.waitKey(1)
             cv2.imshow('Camera Feed', frame)
         else:
             break
+
+if __name__ == "__main__":
+    h = Harvester()
+    h.add_file(r'C:\Users\User\Desktop\Tommy_Tweezers_Automation\tweezers_automation\tweezers_automation_v2\bgapi2_gige.cti')
+    h.update()
+    print(h.device_info_list)
+
+    ia = h.create()
+    ia.start()
+    while True:
+        with ia.fetch() as buffer:
+            # Work with the Buffer object. It consists of everything you need.
+            component = buffer.payload.components[0]
+            #print(buffer)
+            img = np.ndarray(buffer=component.data.copy(), dtype=np.uint8,
+                              shape=(component.height, component.width, 1))
+            cv2.waitKey(10)
+            cv2.imshow('Camera Feed', img)
+            # The buffer will automatically be queued.
+
 

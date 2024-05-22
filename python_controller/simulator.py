@@ -4,7 +4,8 @@ import random
 import camera
 from constants import *
 global white_bg
-import mpc
+import beads
+
 white_bg = np.ones((CAM_Y, CAM_X, 3), dtype = np.uint8) * 255
 
 class Bead:
@@ -46,7 +47,7 @@ class Bead:
             return [self.x, self.y]
 
     def get_next_pos(self, dt, dynamics):
-        a_next = mpc.RK4IntegratorObs(dynamics, dt)(self.velocity[0], dt)
+        a_next = beads.RK4IntegratorObs(dynamics, dt)(self.velocity[0], dt)
         v_next = dt * a_next + self.v_next
         x_next = dt * v_next + self.x_next
         return x_next

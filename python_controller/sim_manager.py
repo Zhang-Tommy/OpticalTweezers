@@ -9,7 +9,7 @@ class SimManager:
     """ Defines functions for tracking, creating, moving, and deleting beads"""
     def __init__(self):
         # Holds beads in a 2d grid w/dimensions of camera
-        self.grid = [[Bead() for _ in range(CAM_X)] for _ in range(CAM_Y)]
+        self.grid = [[Bead() for _ in range(CAM_Y)] for _ in range(CAM_X)]
         self.trapped_beads = {}  # Holds x,y position (cam_coords) of trapped beads
         self.free_beads = {}
         self.num_beads = 0  # Number of active traps

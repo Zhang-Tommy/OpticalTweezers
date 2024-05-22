@@ -136,15 +136,64 @@ class RK4Integrator(NamedTuple):
         k4 = self.dt * self.ode(x + k3, u)
         return x + (k1 + 2 * k2 + 2 * k3 + k4) / 6
 
-class RK4IntegratorObs(NamedTuple):
-    """Discrete time dynamics from time-invariant continuous time dynamics using a 4th order Runge-Kutta method."""
-    ode: Callable
-    dt: float
 
-    #@jax.jit  # optimize using just-in-time compilation
-    def __call__(self, x, dt):
-        k1 = self.dt * self.ode(x, dt)
-        k2 = self.dt * self.ode(x + k1 / 2, dt)
-        k3 = self.dt * self.ode(x + k2 / 2, dt)
-        k4 = self.dt * self.ode(x + k3, dt)
-        return x + (k1 + 2 * k2 + 2 * k3 + k4) / 6
+def controller(start_state, goal_position, u_guess, env, T, dt):
+    """ Controller for obstacle avoidance and path planning """
+    # What does controller need to know?
+    # State of system (coordinates of all obstacles, trapped beads)
+    # Outputs: control x,y for specific bead
+    dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
+    states, controls = simulate_mpc(start_state, goal_position, u_guess, env, dynamics, RunningCost,
+                                    FullHorizonTerminalCost, False, 20, T)
+    return states
+
+
+def simulator_mpc(sm):
+    traps = list(sm.trapped_beads.keys())
+
+    trap_parent.send(traps)
+    if kp_child.poll():
+        kps = kp_child.recv()
+
+    num_beads = len(kps)
+
+    x = float(round(kps[0][0]))
+    y = float(round(kps[0][1]))
+
+    sm.add_spot((int(x), int(y)))
+
+    T = 7500
+
+    start_state = jnp.array([x, y])
+    print(start_state)
+    goal_position = jnp.array([0, 0])
+
+    u_guess = gen_intial_traj(start_state, goal_position, 20).T
+
+    dt = 1e-6
+    kpsarray = jnp.asarray(kps)
+    # kpsarray = kpsarray.at[:, 1].set(480 - kpsarray[:, 1])
+
+    # print(kpsarray)
+    env = Environment.create(num_beads, kpsarray)
+
+    states = controller(start_state, goal_position, u_guess, env, T, dt)
+
+    for k in range(T - 1):
+        traps = list(sm.trapped_beads.keys())
+
+        if k % 10 == 1:
+            trap_parent.send(traps)
+
+        if kp_child.poll():
+            kps = kp_child.recv()
+
+        x_curr = int(states[k][0])
+        y_curr = int(states[k][1])
+
+        x_next = int(states[k + 1][0])
+        y_next = int(states[k + 1][1])
+
+        sm.move_trap((x_curr, y_curr), (x_next, y_next))
+
+        time.sleep(0.01)

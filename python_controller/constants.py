@@ -8,7 +8,7 @@ CAM_Y = 480
 
 CAM_TO_UM = 0.1875
 
-ANGLE = -3 * math.pi/180
+ANGLE = -3 * (math.pi/180)
 Z_OFFSET = -8.0
 
 SCALE_X = 1.07
