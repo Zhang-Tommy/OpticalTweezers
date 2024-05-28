@@ -365,7 +365,7 @@ class MPCTerminalCost(NamedTuple):
     def __call__(self, state):
         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
         goal_penalty = jnp.where(distance_to_goal > 10, 2 * distance_to_goal - 1, distance_to_goal**2)
-        return 1000*(goal_penalty)
+        return 200000*(goal_penalty)
 
 class FullHorizonTerminalCost(NamedTuple):
     env: Environment

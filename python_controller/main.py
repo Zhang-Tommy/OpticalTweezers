@@ -44,7 +44,7 @@ def holo(trap_parent, kp_child):
 
     # Define start and goal states
     start_state = jnp.array([x_start, y_start])
-    goal_position = jnp.array([0, 0])
+    goal_position = jnp.array([50, 50])
 
     dt = 1e-6
 
@@ -60,20 +60,32 @@ def holo(trap_parent, kp_child):
     state = start_state
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
 
+    start_time = time.time()
+
     for k in range(T - 1):
-        control, _ = policy(state, goal_position, u_guess, env, dynamics, RunningCost, FullHorizonTerminalCost, False, N)
+        control, _ = policy(state, goal_position, u_guess, env, dynamics, RunningCost, MPCTerminalCost, False, N)
         traps = list(sm.trapped_beads.keys())
         print(f'State: {state}, Control: {control}')
         sm.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
         state = control  # The control is the position of the bead
-        trap_parent.send(traps)
+
         if k % 10 == 1:  # "Synchronized" with random bead movement
+            trap_parent.send(traps)
             if kp_child.poll():
                 kps = kp_child.recv()
                 kpsarray = jnp.asarray(kps)
                 num_beads = len(kps)
                 env.create(num_beads, kpsarray)  # Update environment
         time.sleep(.005)
+
+        ## if close to goal, break
+        dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
+        if dist_to_goal < 1:
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            print(f'Goal Reached in {elapsed_time} seconds!')
+            break
+
         if keyboard.is_pressed('q'):
             holo_process.terminate()
             break
@@ -81,7 +93,7 @@ def holo(trap_parent, kp_child):
 def simulator(trap_child, kp_parent):
     """ Controls the simulator visualization w/random bead distribution """
     sm = SimManager()
-    number_of_beads = 25
+    number_of_beads = 10
 
     dt = 0.0015
 
