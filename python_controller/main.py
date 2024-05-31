@@ -9,14 +9,13 @@ import camera
 import time
 import numpy as np
 
-from beads import *
+from mpc import *
 # import time
 
 from utilities import *
 from sim_manager import SimManager
 from simulator import white_bg
 from spot_manager import SpotManager
-from mpc import ContinuousTimeObstacleDynamics
 from harvesters.core import Harvester
 
 def holo(trap_parent, kp_child):
@@ -55,7 +54,7 @@ def holo(trap_parent, kp_child):
 
     T = 7500
     N = 5
-    u_guess = gen_intial_traj(start_state, goal_position, N).T
+    u_guess = gen_initial_traj(start_state, goal_position, N).T
 
     state = start_state
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
@@ -93,7 +92,7 @@ def holo(trap_parent, kp_child):
 def simulator(trap_child, kp_parent):
     """ Controls the simulator visualization w/random bead distribution """
     sm = SimManager()
-    number_of_beads = 10
+    number_of_beads = 25
 
     dt = 0.0015
 

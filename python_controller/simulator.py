@@ -3,10 +3,12 @@ import cv2
 import random
 import camera
 from constants import *
+
 global white_bg
-import beads
+import mpc
 
 white_bg = np.ones((CAM_Y, CAM_X, 3), dtype = np.uint8) * 255
+
 
 class Bead:
     def __init__(self, x_start=None, y_start=None):
@@ -22,7 +24,6 @@ class Bead:
 
         self.v_next = 0
         self.x_next = 0
-
 
     def move_bead(self, x_new, y_new, color):
         # Draw previous bead as white bead
@@ -47,10 +48,11 @@ class Bead:
             return [self.x, self.y]
 
     def get_next_pos(self, dt, dynamics):
-        a_next = beads.RK4IntegratorObs(dynamics, dt)(self.velocity[0], dt)
+        a_next = mpc.RK4IntegratorObs(dynamics, dt)(self.velocity[0], dt)
         v_next = dt * a_next + self.v_next
         x_next = dt * v_next + self.x_next
         return x_next
+
 
 def generate_random_beads(n):
     beads = []
@@ -81,4 +83,3 @@ if __name__ == "__main__":
 
     # Close all OpenCV windows
     cv2.destroyAllWindows()
-

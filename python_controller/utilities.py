@@ -1,8 +1,11 @@
-import socket, os
-from constants import *
-import subprocess, time
+import os
+import socket
+import subprocess
+import time
 
-"""Functions for setting uniform variables"""
+from constants import *
+
+
 def init_holo_engine():
     """Initializes hologram engine by sending shader source code and updating uniform variables
     Communicates with the hologram engine via UDP packets
@@ -38,6 +41,7 @@ def init_holo_engine():
     server_socket.close()
     return holo_process
 
+
 def send_data(message):
     """ Send UDP packet containing message to hologram engine"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -58,7 +62,6 @@ def cam_to_um(cam_pos):
     """ Converts from camera coordinates to micrometers in workspace """
     um_x = cam_pos[0] * CAM_TO_UM
     um_y = cam_pos[1] * CAM_TO_UM
-
     return [um_x, um_y]
 
 

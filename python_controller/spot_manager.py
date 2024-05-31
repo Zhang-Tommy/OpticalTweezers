@@ -89,8 +89,3 @@ class SpotManager:
 
         # Send to hologram engine
         self.update_traps()
-
-
-
-
-
