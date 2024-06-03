@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt; plt.rcParams.update({'font.size': 20})
 import matplotlib.collections
 import matplotlib.transforms
 from ipywidgets import interact, interactive
-
+import time
 from typing import Callable, NamedTuple
 
 
@@ -168,7 +168,7 @@ class RK4Integrator(NamedTuple):
 
 @jax.jit
 # Run every single MPC loop (Every time we plan over the horizon)
-def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=100, atol=1e-3):
+def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=200, atol=1e-3):
     running_cost, terminal_cost = total_cost
     n, (N, m) = x0.shape[-1], u_guess.shape  # Initial state and control inputs
     step_range = jnp.arange(N) # 0, 1, 2, 3,..., N - 1
@@ -184,6 +184,12 @@ def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxi
         i, xs, us, j_curr, j_prev = loop_vars
 
         f_x, f_u = jax.vmap(jax.jacobian(dynamics, (0, 1)))(xs[:-1], us, step_range)
+
+        # put A and stack a bunch of times to get f_x
+        # same with B
+
+        # f_x and f_u are just a bunch of A and B matrices
+        #jax.debug.print("state = {dist}", dist = f_x)
         c = jax.vmap(running_cost)(xs[:-1], us, step_range)
         c_x, c_u = jax.vmap(jax.grad(running_cost, (0, 1)))(xs[:-1], us, step_range)
         (c_xx, c_xu), (c_ux, c_uu) = jax.vmap(jax.hessian(running_cost, (0, 1)))(xs[:-1], us, step_range)
@@ -323,8 +329,10 @@ class Asteroid(NamedTuple):
     radius: jnp.array
     velocity: jnp.array
 
-    def at_time(self, time):
-        return self._replace(center=self.center)
+    def update(self, kps, num_beads):
+        #bead_centers = jnp.reshape(kps, (num_beads, 2))
+        updated_radius = 10 * np.ones(num_beads)
+        return self._replace(center=kps, radius=updated_radius)
     
 
 class Environment(NamedTuple):
@@ -344,8 +352,10 @@ class Environment(NamedTuple):
                 np.zeros(num_beads),
             ), obj_bead_radius, bubble_radius, bounds)
 
-    def at_time(self, time):
-        return self._replace(asteroids=self.asteroids.at_time(time))
+    def update(self, kps, num_beads):
+        updated_beads = self.asteroids.update(kps, num_beads)
+
+        return self._replace(asteroids=updated_beads)
 
     def wrap_vector(self, vector):
         return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
@@ -358,7 +368,7 @@ class RunningCost(NamedTuple):
     def __call__(self, state, control, step):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
-        asteroids = self.env.asteroids.at_time(step)
+        asteroids = self.env.asteroids
 
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
@@ -371,8 +381,8 @@ class RunningCost(NamedTuple):
 
         u_x, u_y = control
 
-        x_dist = 4e2*(state[0] - u_x) ** 2
-        y_dist = 4e2*(state[1] - u_y) ** 2
+        x_dist = 5e5*(state[0] - u_x) ** 2
+        y_dist = 5e5*(state[1] - u_y) ** 2
 
         return collision_avoidance_penalty + x_dist + y_dist
 
@@ -416,9 +426,8 @@ def gen_initial_traj(start_state, goal_state, N):
 
 @functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N", "dynamics"])
 def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20):
-    #if limited_sensing:
-    #    env = env.sense(state[:2])
     empty_env = Environment.create(0, [])
+    start_time = time.time()
     solution = iterative_linear_quadratic_regulator(
         dynamics,
         TotalCost(
@@ -433,6 +442,10 @@ def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, term
         state,
         u_guess,
     )
+    end_time = time.time()
+    #jax.debug.print("Iter (empty_env) = {dist}", dist = solution["num_iterations"])
+    #jax.debug.print("Time elapsed (empty_env) = {dist}", dist = end_time-start_time)
+    start_time = time.time()
     solution = iterative_linear_quadratic_regulator(
         dynamics,
         TotalCost(
@@ -447,6 +460,9 @@ def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, term
         state,
         solution["optimal_trajectory"][1],
     )
+    end_time = time.time()
+    jax.debug.print("Iter (env) = {dist}", dist = solution["num_iterations"])
+    #jax.debug.print("Time elapsed (env) = {dist}", dist = end_time - start_time)
     states, controls = solution["optimal_trajectory"]
     return controls[0], (states, controls)
 

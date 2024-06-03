@@ -15,7 +15,7 @@ class Bead:
         self.is_trapped = False
         self.x = x_start
         self.y = y_start
-        self.bead_size = 10
+        self.bead_size = 12
         if x_start is not None:
             self.create_bead()
         self.active = False
