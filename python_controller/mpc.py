@@ -1,6 +1,8 @@
 
 
 import functools
+from turtledemo.penrose import start
+
 from IPython.display import display
 
 import jax
@@ -115,10 +117,12 @@ def riccati_step(
     q_xx = c_xx + f_x.T @ v_xx @ f_x
     q_uu = c_uu + f_u.T @ v_xx @ f_u
     q_ux = c_ux + f_u.T @ v_xx @ f_x
-
+    st=time.time()
     l = -jnp.linalg.solve(q_uu, q_u)
     l_x = -jnp.linalg.solve(q_uu, q_ux)
+    ed=time.time()
 
+    #jax.debug.print("Time {dist}", dist=ed-st)
     current_state_value = QuadraticStateCost(
         q - l.T @ q_uu @ l / 2,
         q_x - l_x.T @ q_uu @ l,
@@ -168,7 +172,8 @@ class RK4Integrator(NamedTuple):
 
 @jax.jit
 # Run every single MPC loop (Every time we plan over the horizon)
-def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=200, atol=1e-3):
+def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=1, atol=10):
+    st=time.time()
     running_cost, terminal_cost = total_cost
     n, (N, m) = x0.shape[-1], u_guess.shape  # Initial state and control inputs
     step_range = jnp.arange(N) # 0, 1, 2, 3,..., N - 1
@@ -178,6 +183,7 @@ def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxi
 
     def continuation_criterion(loop_vars):
         i, _, _, j_curr, j_prev = loop_vars
+        #jax.debug.print(f"Current={j_curr} Prev={j_prev}")
         return (j_curr < j_prev - atol) & (i < maxiter)
 
     def ilqr_iteration(loop_vars):
@@ -216,7 +222,7 @@ def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxi
 
         policy = jax.lax.scan(scan_fn,
                               quadratized_terminal_cost, (linearized_dynamics, quadratized_running_cost),
-                              reverse=True)[1]
+                              reverse=True)[1] # 0.001sec
 
         def rollout_linesearch_policy(alpha):
             # Note that we roll out the true `dynamics`, not the `linearized_dynamics`!
@@ -224,14 +230,17 @@ def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxi
             return rollout_state_feedback_policy(dynamics, AffinePolicy(alpha * l, l_x), x0, step_range, xs, us)
 
         # Backtracking line search (step sizes evaluated in parallel).
+
         all_xs, all_us = jax.vmap(rollout_linesearch_policy)(0.5**jnp.arange(16))
         js = jax.vmap(total_cost)(all_xs, all_us)
         a = jnp.argmin(js)
         j = js[a]
         xs = jnp.where(j < j_curr, all_xs[a], xs)
         us = jnp.where(j < j_curr, all_us[a], us)
+
         return i + 1, xs, us, jnp.minimum(j, j_curr), j_curr
 
+    st = time.time()
     i, xs, us, j, _ = jax.lax.while_loop(continuation_criterion, ilqr_iteration, (0, xs, us, j, jnp.inf))
 
     return {
@@ -331,7 +340,7 @@ class Asteroid(NamedTuple):
 
     def update(self, kps, num_beads):
         #bead_centers = jnp.reshape(kps, (num_beads, 2))
-        updated_radius = 10 * np.ones(num_beads)
+        updated_radius = 10 * jnp.ones(num_beads)
         return self._replace(center=kps, radius=updated_radius)
     
 
@@ -347,9 +356,9 @@ class Environment(NamedTuple):
         #jax.debug.print("state = {dist}", dist = kpsarray)
         return cls(
             Asteroid(
-                np.reshape(kpsarray, (num_beads, 2)),  # np.random.rand(num_beads, 2) * bounds
-                10*np.ones(num_beads),
-                np.zeros(num_beads),
+                jnp.reshape(kpsarray, (num_beads, 2)),  # np.random.rand(num_beads, 2) * bounds
+                10*jnp.ones(num_beads),
+                jnp.zeros(num_beads),
             ), obj_bead_radius, bubble_radius, bounds)
 
     def update(self, kps, num_beads):
@@ -372,19 +381,22 @@ class RunningCost(NamedTuple):
 
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
-        separation_distance = jnp.where(
-            jnp.isnan(asteroids.radius), np.inf,
-            jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius -
-            self.env.obj_bead_radius)
-        collision_avoidance_penalty = jnp.sum(
-            jnp.where(separation_distance > 15, 0, 1e4 * (15 - separation_distance)**2))
-
+        separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+        total_separation = 3e-4 * jnp.sum(separation_distance)**2
+        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 25, 0, 1e3 * (25 - separation_distance) ** 2))
+        #collision_penalty = jnp.sum(
+        #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
+        x_dist = 1e3 * (state[0] - u_x) ** 2 #1e3
+        y_dist = 1e3 * (state[1] - u_y) ** 2
 
-        x_dist = 5e5*(state[0] - u_x) ** 2
-        y_dist = 5e5*(state[1] - u_y) ** 2
+        min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e3, 0)
 
-        return collision_avoidance_penalty + x_dist + y_dist
+        # how to allow for backtracking? balance cost of getting near object/ramming through it with cost of taking a longer route
+        #minimize sum of distances away from beads
+
+        #
+        return collision_avoidance_penalty + x_dist + y_dist #- total_separation
 
 
 class MPCTerminalCost(NamedTuple):
@@ -397,8 +409,11 @@ class MPCTerminalCost(NamedTuple):
 
     def __call__(self, state):
         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
-        goal_penalty = jnp.where(distance_to_goal > 10, 2 * distance_to_goal - 1, distance_to_goal**2)
-        return 200000*(goal_penalty)
+        #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
+        #goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
+        goal_penalty = distance_to_goal ** 2
+        return 1e3 * goal_penalty
+        #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
 
 class FullHorizonTerminalCost(NamedTuple):
@@ -410,24 +425,22 @@ class FullHorizonTerminalCost(NamedTuple):
         return cls(env, goal_position)
 
     def __call__(self, state):
-        return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
+        return 10000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
 
 def gen_initial_traj(start_state, goal_state, N):
     xs, ys = start_state
     xg, yg = goal_state
 
-    x_traj = np.linspace(xs, xg, N)
-    y_traj = np.linspace(ys, yg, N)
+    x_traj = jnp.linspace(xs, xg, N)
+    y_traj = jnp.linspace(ys, yg, N)
 
-    traj = np.array([x_traj.T, y_traj.T])
+    traj = jnp.array([x_traj.T, y_traj.T])
     return traj
 
 
 @functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N", "dynamics"])
-def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20):
-    empty_env = Environment.create(0, [])
-    start_time = time.time()
+def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, empty_env, limited_sensing=False, N=20):
     solution = iterative_linear_quadratic_regulator(
         dynamics,
         TotalCost(
@@ -442,10 +455,6 @@ def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, term
         state,
         u_guess,
     )
-    end_time = time.time()
-    #jax.debug.print("Iter (empty_env) = {dist}", dist = solution["num_iterations"])
-    #jax.debug.print("Time elapsed (empty_env) = {dist}", dist = end_time-start_time)
-    start_time = time.time()
     solution = iterative_linear_quadratic_regulator(
         dynamics,
         TotalCost(
@@ -460,11 +469,9 @@ def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, term
         state,
         solution["optimal_trajectory"][1],
     )
-    end_time = time.time()
-    jax.debug.print("Iter (env) = {dist}", dist = solution["num_iterations"])
-    #jax.debug.print("Time elapsed (env) = {dist}", dist = end_time - start_time)
     states, controls = solution["optimal_trajectory"]
-    return controls[0], (states, controls)
+
+    return solution
 
 
 def simulate_mpc(start_state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, limited_sensing=False, N=20, T=1250):
