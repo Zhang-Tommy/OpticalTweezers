@@ -1,5 +1,3 @@
-
-
 import functools
 from turtledemo.penrose import start
 

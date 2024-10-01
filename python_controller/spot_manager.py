@@ -13,6 +13,10 @@ class SpotManager:
         self.num_spots = 0  # Number of active traps
         self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
 
+    def get_trapped_beads(self):
+        #print(list(self.trapped_beads.keys()))
+        return self.trapped_beads
+
     def get_spots(self):
         """ Updates all spot parameters (preparation for hologram engine update) """
         spot_vals = np.zeros(16*self.num_spots)

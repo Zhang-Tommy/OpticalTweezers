@@ -13,3 +13,7 @@ Z_OFFSET = -8.0
 
 SCALE_X = 1.07
 SCALE_Y = 1.10
+
+CTI_FILE_DIR = r'C:\Users\User\Desktop\Tommy_Tweezers_Automation\tweezers_automation\tweezers_automation_v2\bgapi2_gige.cti'
+
+MAX_NUM_TRAPS = 5

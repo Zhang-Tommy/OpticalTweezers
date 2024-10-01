@@ -2,6 +2,7 @@ import os
 import socket
 import subprocess
 import time
+from harvesters.core import Harvester
 
 from constants import *
 
@@ -40,6 +41,17 @@ def init_holo_engine():
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
     server_socket.close()
     return holo_process
+
+def start_image_acquisition():
+    h = Harvester()
+    h.add_file(CTI_FILE_DIR)
+    h.update()
+
+    ia = h.create()
+    ia.start()
+
+    return ia
+
 
 
 def send_data(message):
