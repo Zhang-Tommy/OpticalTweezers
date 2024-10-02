@@ -11,11 +11,12 @@ white_bg = np.ones((CAM_Y, CAM_X, 3), dtype = np.uint8) * 255
 
 
 class Bead:
+    """ Bead represents a drawn entity that is contained in the simulator display """
     def __init__(self, x_start=None, y_start=None):
-        self.is_trapped = False
+        self.is_trapped = False  # If a bead is trapped under laser power
         self.x = x_start
         self.y = y_start
-        self.bead_size = 12
+        self.bead_size = 12  # Radius of the bead
         if x_start is not None:
             self.create_bead()
         self.active = False

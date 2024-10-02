@@ -2,10 +2,10 @@ import os
 import socket
 import subprocess
 import time
+import numpy as np
+
 from harvesters.core import Harvester
-
 from constants import *
-
 
 def init_holo_engine():
     """Initializes hologram engine by sending shader source code and updating uniform variables
@@ -43,6 +43,7 @@ def init_holo_engine():
     return holo_process
 
 def start_image_acquisition():
+    """ Initializes the gigE camera"""
     h = Harvester()
     h.add_file(CTI_FILE_DIR)
     h.update()
@@ -52,7 +53,50 @@ def start_image_acquisition():
 
     return ia
 
+def remove_closest_point(coords, x, y):
+    """ Removes the closest point to (x,y) in the coords array"""
+    # Calculate the Euclidean distance between each point and the given (x, y)
+    distances = np.sqrt((coords[:, 0] - x) ** 2 + (coords[:, 1] - y) ** 2)
 
+    # Find the index of the point with the minimum distance
+    closest_index = np.argmin(distances)
+    closest_dist = distances[closest_index]
+
+    if closest_dist > 20:
+        #print("too far away")
+        coords = coords[1:]
+        return coords
+
+    # Remove the closest point by deleting that index
+    updated_coords = np.delete(coords, closest_index, axis=0)
+    #print(coords[closest_index])
+    #print(f"{x}, {y}")
+    return updated_coords
+
+def sync_pipes(one, two, parent):
+    """ Buffer for pipes, takes multiple inputs and outputs a single concatenated list"""
+    one_recvd = False
+    two_recvd = False
+    while True:
+        if one.poll():
+            trap_one = one.recv()
+            print(trap_one)
+            one_recvd = True
+
+        if two.poll():
+            trap_two = two.recv()
+            two_recvd = True
+
+        if one_recvd and two_recvd:
+            traps = trap_one.append(trap_two)
+            parent.send(traps)
+            print(traps)
+            one_recvd = False
+            two_recvd = False
+        elif one_recvd:
+            two_recvd = False
+        else:
+            one_recvd = False
 
 def send_data(message):
     """ Send UDP packet containing message to hologram engine"""
@@ -62,20 +106,17 @@ def send_data(message):
     server_socket.sendto(str.encode(start + message + end), (UDP_IP, UDP_PORT))
     server_socket.close()
 
-
 def set_uniform(var_num, new_data):
     """ Set specific uniform variables in hologram engine (configuration related) """
     start = f'<uniform id={var_num}>\n'
     end = '\n</uniform>'
     send_data(start + new_data + end)
 
-
 def cam_to_um(cam_pos):
     """ Converts from camera coordinates to micrometers in workspace """
     um_x = cam_pos[0] * CAM_TO_UM
     um_y = cam_pos[1] * CAM_TO_UM
     return [um_x, um_y]
-
 
 def kill_holo_engine():
     """Terminate the hologram engine executable"""

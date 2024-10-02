@@ -1,65 +1,23 @@
 import multiprocessing
-from multiprocessing import Process, Lock, Manager
-from multiprocessing.managers import BaseManager
-import threading
 import random
-from turtledemo.penrose import start
+import threading
+from multiprocessing import Lock, Process
+from multiprocessing.managers import BaseManager
 
 import cv2
-import jax
 import keyboard
 
 import camera
-import time
-import numpy as np
-import timeit
-
 from mpc import *
-# import time
-
-from utilities import *
 from sim_manager import SimManager
 from simulator import white_bg
 from spot_manager import SpotManager
-from harvesters.core import Harvester
-
-""" Doesn't really work, should remove the controlled bead from obstacles"""
-def remove_closest_point(coords, x, y):
-    # Calculate the Euclidean distance between each point and the given (x, y)
-    distances = np.sqrt((coords[:, 0] - x) ** 2 + (coords[:, 1] - y) ** 2)
-
-    # Find the index of the point with the minimum distance
-    closest_index = np.argmin(distances)
-    closest_dist = distances[closest_index]
-
-    if closest_dist > 20:
-        #print("too far away")
-        coords = coords[1:]
-        return coords
-
-    # Remove the closest point by deleting that index
-    updated_coords = np.delete(coords, closest_index, axis=0)
-    #print(coords[closest_index])
-    #print(f"{x}, {y}")
-    return updated_coords
+from utilities import *
 
 def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, spot_man):
-    """ Controls hologram engine and creating traps """
-    # Initialize the hologram engine (sends commands to spatial light modulator that generates holograms)
-    #holo_process = init_holo_engine()
-
-    # Initialize spot manager (create, move, modify optical traps)
-    #spot_man = SpotManager()  # using two of these may not be optimal because of the data being sent to hologram engine
-
-    """"""
     spot_lock.acquire()
-    #
-    #trap = np.array(list(spot_man.get_trapped_beads().keys()))
-
     lock.acquire()
-    #trap_parent.send(trap)
-
-    kps = kp_child.recv()
+    kps = kp_child.recv() # Blocking, wait until keypoints have been received
 
     num_beads = len(kps) - 1
 
@@ -70,54 +28,50 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
     # Trap the target bead
     spot_man.add_spot((int(x_start), int(y_start)))
     spot_lock.release()
+
     # Define start and goal states
     start_state = jnp.array([x_start, y_start])
     goal_position = jnp.array([50, 50])
 
-    dt = 1e-3
-
     kpsarray = jnp.asarray(kps)
-    kpsarray = kpsarray[kpsarray != start_state[0]]  # remove start state from keypoints
-    kpsarray = kpsarray[kpsarray != start_state[1]]
-    #print(len(kpsarray))
-    env = Environment.create(num_beads, kpsarray)
+    kpsarray = kpsarray[kpsarray != start_state]  # remove start state from keypoints
+    #psarray = kpsarray[kpsarray != start_state[1]]
 
-    T = 7500
+    env = Environment.create(num_beads, kpsarray) ## problematic
+
+    print(f"KPS: {len(kpsarray)}, NUM_BEADS: {num_beads}")
+
     N = 125
-    u_guess = gen_initial_traj(start_state, goal_position, N).T
+    init_control = gen_initial_traj(start_state, goal_position, N).T
 
     state = start_state
-    dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), dt)
-    lock.release()
-    #traps = np.zeros((MAX_NUM_TRAPS, 2), dtype=int)
 
-    start_time = time.time()
-    # the MPC loop runs at 30 hz
-    for k in range(T - 1):
+    dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
+
+    lock.release()
+
+    while True:
         st = time.time()
         empty_env = Environment.create(0, jnp.array([]))
-        solution = policy(state, goal_position, u_guess, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N)
+        solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N)
         states, opt_controls = solution["optimal_trajectory"]
         control = opt_controls[0]
-        spot_lock.acquire()
+        #spot_lock.acquire()
         try:
             spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
         except:
             print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
 
-        #traps = list(spot_man.trapped_beads.keys())
-        #print(spot_man.trapped_beads.keys())
-
         traps = list(spot_man.get_trapped_beads().keys())
-        spot_lock.release()
-        #print(trap)
-        prev_state = state
-        state = control  # The control is the position of the bead
+        #spot_lock.release()
 
-        lock.acquire()
+        prev_state = state
+        state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
+
+        #lock.acquire()
         trap_parent.send(traps) # can just try with two, make non-scalable
         controls_parent.send(opt_controls)
-
+        #lock.release()
         if kp_child.poll():
             kps = kp_child.recv()
             kpsarray = jnp.asarray(kps)
@@ -127,19 +81,18 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
             #kpsarray = kpsarray[1:]
 
             env = env.update(kpsarray, num_beads-1)
-        lock.release()
+
         time.sleep(.015)
 
         ## if close to goal, break
         dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
         if dist_to_goal < 5:
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            print(f'Goal Reached in {elapsed_time} seconds!')
+            #end_time = time.time()
+            #elapsed_time = end_time - start_time
+            #print(f'Goal Reached in {elapsed_time} seconds!')
             break
 
         if keyboard.is_pressed('q'):
-            #holo_process.terminate()
             break
         et = time.time()
 
@@ -151,7 +104,7 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child):
     """ Controls the simulator visualization w/random bead distribution """
     # runs at about 12.5 hz
     sim_man = SimManager()
-    number_of_beads = 5
+    number_of_beads = 50
 
     dt = 0.0015
 
@@ -180,11 +133,9 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child):
             #sim_man.trap_bead((trap[0], trap[1]))
             cv2.circle(white_bg, (trap[0], trap[1]), 10, (0, 255, 0), -1)
 
-
         if controls_child.poll():
-            #print("Controls received")
             for t, cont in enumerate(old_controls):
-                if t % 25 == 0:
+                if t % 5 == 0:
                     cv2.circle(white_bg, (int(cont[0]), int(cont[1])), 2, (255, 255, 255), -1)
 
             opt_controls = controls_child.recv()
@@ -192,7 +143,7 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child):
             old_controls = opt_controls
 
             for g, cont in enumerate(opt_controls):
-                if g % 25 == 0:
+                if g % 5 == 0:
                     cv2.circle(white_bg, (int(cont[0]), int(cont[1])), 2, (255, 0, 0), -1)
 
         key_points = camera.detect_beads(white_bg)
@@ -227,33 +178,6 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child):
             break
 
     cv2.destroyAllWindows()
-
-""" trap_parent.send(traps) # can just try with two, make non-scalable
-    controls_parent.send(opt_controls)"""
-def sync_pipes(one, two, parent):
-    # wait for both one and two to send something
-    one_recvd = False
-    two_recvd = False
-    while True:
-        if one.poll():
-            trap_one = one.recv()
-            print(trap_one)
-            one_recvd = True
-
-        if two.poll():
-            trap_two = two.recv()
-            two_recvd = True
-
-        if one_recvd and two_recvd:
-            traps = trap_one.append(trap_two)
-            parent.send(traps)
-            print(traps)
-            one_recvd = False
-            two_recvd = False
-        elif one_recvd:
-            two_recvd = False
-        else:
-            one_recvd = False
 
 def cam(kp_parent):
     ia = start_image_acquisition()
@@ -299,7 +223,6 @@ class SpotManagerManager(BaseManager):
 
 if __name__ == "__main__":
     SpotManagerManager.register('SpotManager', SpotManager)
-    SpotManagerManager.register('SpotManager', SpotManager)
     SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
     SpotManagerManager.register('add_spot', SpotManager.add_spot)
     SpotManagerManager.register('move_trap', SpotManager.move_trap)
@@ -319,23 +242,17 @@ if __name__ == "__main__":
     lock = Lock()
     spot_lock = Lock()
 
-    #p0 = Process(target=sync_pipes, args=(trap_child_one, trap_child_two, trap_parent))
     p1 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 0, spot_man))
     p4 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 1, spot_man)) # likely running into concurrency issues
     p2 = Process(target=simulator, args=(lock, spot_lock, trap_child, kp_parent, controls_child))
-    #p5 = Process(target=sync_pipes, args=(controls_child_one, controls_child_two, controls_parent))
     p3 = Process(target=init_holo_engine, args=())
 
     p2.start()
     p1.start()
     p3.start()
     p4.start()
-    #p0.start()
-    #5.start()
 
     p1.join()
     p2.join()
     p3.join()
     p4.join()
-    #p0.join()
-    #p5.start()

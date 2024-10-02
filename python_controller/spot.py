@@ -1,5 +1,5 @@
 import numpy as np
-
+from constants import *
 
 class Spot:
     """Defines attributes for a single spot for the hologram rendering engine"""
@@ -9,8 +9,9 @@ class Spot:
         self.spot_vec = np.zeros(16)
         self.spot_vec[4] = 1.0  # intensity
         self.spot_vec[10] = 1.0  # na.r
-        self.spot_vec[2] = -8.0  # z-axis offset
+        self.spot_vec[2] = Z_OFFSET  # z-axis offset
         self.active = False
+        self.is_obstacle = False
 
     def change_pos(self, pos):
         """Changes position of the spot rendered"""

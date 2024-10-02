@@ -19,7 +19,7 @@ void Spot::set_spot_values(float new_vals[]) {
 
 
 Spot Spot::set_spot(float x, float y, float z, int l, float i, float p) {
-    //x(um), y, z, l (int), intenstity, phase
+    // x(um), y, z, l (int), intenstity, phase
 	// element 0 x  y  z  l    (x,y,z in um and l is an integer)
 	// element 1 intensity (I) phase -  -
 	// element 2 na.x na.y na.r -  (the x, y, and radius, of the spot on the SLM- useful for Shack-Hartmann holograms)
