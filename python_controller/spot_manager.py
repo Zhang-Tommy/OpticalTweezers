@@ -131,3 +131,9 @@ class SpotManager:
 
         # Send to hologram engine
         self.update_traps()
+
+    def remove_trap(self, pos):
+        new_spot = Spot()
+        self.trapped_beads.pop(pos)
+        self.grid[pos[0]][pos[1]] = new_spot
+        self.num_spots -= 1
