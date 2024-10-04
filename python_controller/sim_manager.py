@@ -26,7 +26,10 @@ class SimManager:
             bead.move_bead(bead.x + int(x_next[0]), bead.y + int(x_next[1]), (0, 0, 255))
 
     def add_bead(self, pos):
-        """Creates a new spot and sends it over to the hologram engine for rendering"""
+        """
+        Creates a new spot and sends it over to the hologram engine for rendering
+        @param pos: x,y position in camera coords
+        """
         # Add the desired spot to the spot object
         new_bead = Bead(pos[0], pos[1])
         self.num_beads += 1
