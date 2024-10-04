@@ -27,4 +27,8 @@ MAX_NUM_TRAPS = 5
 DT = 1e-3
 
 """ Planning horizon steps"""
-N = 125
+N = 50
+# 50
+
+""" Bead radius in pixels"""
+BEAD_RADIUS = 15

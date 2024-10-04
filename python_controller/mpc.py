@@ -6,6 +6,9 @@ from IPython.display import display
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+from python_controller.constants import BEAD_RADIUS
+
 np.seterr(invalid="ignore")
 
 import matplotlib.pyplot as plt; plt.rcParams.update({'font.size': 20})
@@ -355,7 +358,7 @@ class Environment(NamedTuple):
         return cls(
             Asteroid(
                 jnp.reshape(kpsarray, (num_beads, 2)),  # np.random.rand(num_beads, 2) * bounds
-                10*jnp.ones(num_beads),
+                BEAD_RADIUS*jnp.ones(num_beads),
                 jnp.zeros(num_beads),
             ), obj_bead_radius, bubble_radius, bounds)
 

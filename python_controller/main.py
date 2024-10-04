@@ -6,7 +6,7 @@ from multiprocessing.managers import BaseManager
 
 import cv2
 import keyboard
-
+import concurrent.futures
 import camera
 from mpc import *
 from sim_manager import SimManager
@@ -35,7 +35,6 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
 
     kpsarray = jnp.asarray(kps)
     kpsarray = kpsarray[kpsarray != start_state]  # remove start state from keypoints
-    #psarray = kpsarray[kpsarray != start_state[1]]
 
     env = Environment.create(num_beads, kpsarray) ## problematic
 
@@ -68,28 +67,30 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
         prev_state = state
         state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
 
-        #lock.acquire()
+        lock.acquire()
         trap_parent.send(traps) # can just try with two, make non-scalable
         controls_parent.send(opt_controls)
-        #lock.release()
+        lock.release()
         if kp_child.poll():
             kps = kp_child.recv()
             kpsarray = jnp.asarray(kps)
-            num_beads = len(kps)
-            # we need to ensure the bead we are moving is removed from this
             kpsarray = remove_closest_point(kpsarray, prev_state[0], prev_state[1])
-            #kpsarray = kpsarray[1:]
 
-            env = env.update(kpsarray, num_beads-1)
+            nearest_kps = []
+            for i, kp in enumerate(kpsarray):
+                if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
+                    nearest_kps.append(kp)
 
-        time.sleep(.015)
+            if len(nearest_kps) < 50:
+                nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
+
+            nearest_kps = jnp.asarray(nearest_kps)
+            env = env.update(nearest_kps, len(nearest_kps))
 
         ## if close to goal, break
         dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
         if dist_to_goal < 5:
-            #end_time = time.time()
-            #elapsed_time = end_time - start_time
-            #print(f'Goal Reached in {elapsed_time} seconds!')
+            print("Goal reached!")
             break
 
         if keyboard.is_pressed('q'):
@@ -101,76 +102,65 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
             time.sleep(0.05 - (et - st))
 
 def simulator(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man):
-    """ Controls the simulator visualization w/random bead distribution """
-    # runs at about 12.5 hz
+    """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
     number_of_beads = 50
-
     dt = 0.0015
     dragging_trap_idx = [None]
+
+    # Initialize beads and traps
     for _ in range(number_of_beads):
         x_start = random.randint(0, CAM_X - 1)
         y_start = random.randint(0, CAM_Y - 1)
         sim_man.add_bead((x_start, y_start))
 
     traps = []
+
+    def nothing(x):
+        pass
+
     cv2.namedWindow("Optical Tweezers Simulator")
     cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=(spot_man, traps, dragging_trap_idx))
-    i = 0
+    cv2.createTrackbar('R', 'Optical Tweezers Simulator', 0, 255, nothing)
     dynamics = ContinuousTimeObstacleDynamics()
-    old_controls = []
-    while True:
-        st = time.time()
-        if i % 1 == 0:  # Move each bead randomly
+
+    i = 0
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        while True:
+            frame = white_bg.copy()
+
             sim_man.brownian_move(dt, dynamics)
 
-        # Poll for updated trap data (non-blocking)
+            if trap_child.poll():  # Poll for updated trap data (non-blocking)
+                traps = trap_child.recv()
+            for x, y in traps:   # Draw traps
+                cv2.circle(frame, (x, y), 10, (0, 128, 0), -1)
 
-        if trap_child.poll():
-            traps = trap_child.recv()
+            # Handle controls and draw old/new controls
+            if controls_child.poll():
+                opt_controls = controls_child.recv().reshape(-1, 2)
+                for g, cont in enumerate(opt_controls):
+                    if g % 25 == 0:
+                        cv2.circle(frame, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
 
-        for x, y in traps:
-            # if trap is near a bead, then trap it
-            #sim_man.trap_bead((trap[0], trap[1]))
-            cv2.circle(white_bg, (x, y), 10, (0, 255, 0), -1)
+            # Detect and draw beads using keypoints
+            key_points = camera.detect_beads(frame)
+            cv2.drawKeypoints(frame, key_points, frame, (255, 0, 0))
 
-        if controls_child.poll():
-            for t, cont in enumerate(old_controls):
-                if t % 25 == 0:
-                    cv2.circle(white_bg, (int(cont[0]), int(cont[1])), 2, (255, 255, 255), -1)
+            # Send keypoints asynchronously
+            points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
+            # Todo: this will probably not work in experiments since beads can freely diffuse into the workspace
+            if len(points) < number_of_beads:  # pad the keypoints with zeros to keep consistent length
+                points.extend([[0.0, 0.0]] * (number_of_beads - len(points)))
 
-            opt_controls = controls_child.recv()
-            opt_controls = opt_controls.reshape(-1, 2)
-            old_controls = opt_controls
+            # Send keypoints
+            executor.submit(kp_parent.send, points)
 
-            for g, cont in enumerate(opt_controls):
-                if g % 25 == 0:
-                    cv2.circle(white_bg, (int(cont[0]), int(cont[1])), 2, (255, 0, 0), -1)
+            cv2.imshow("Optical Tweezers Simulator", frame)
 
-        key_points = camera.detect_beads(white_bg)
-        cv2.drawKeypoints(white_bg, key_points, white_bg, (255, 0, 0))
-
-        cv2.imshow("Optical Tweezers Simulator", white_bg)
-
-        for x, y in traps:
-            cv2.circle(white_bg, (x, y), 18, (255, 255, 255), -1)
-
-        points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
-
-        # check if points has same number of elements as num_beads, if not pad with zeros
-        if len(points) < (number_of_beads - 1):
-            diff = number_of_beads - len(points) - 1
-            for e in range(diff):
-                points.append([float(e), 0.0])
-
-        threading.Thread(target=kp_parent.send, args=(points,)).start()
-        et = time.time()
-        cv2.waitKey(1)  # Millisecond delay
-        i += 1
-        print(f"Time Elapsed: {et - st}")
-        if keyboard.is_pressed('q'):
-            os.system("taskkill /f /im  hologram_engine_64.exe")
-            break
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                os.system("taskkill /f /im hologram_engine_64.exe")
+                break
 
     cv2.destroyAllWindows()
 
@@ -189,19 +179,25 @@ def mouse_callback(event, x, y, flags, param):
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
         for i, trap in enumerate(traps):
             if np.linalg.norm(np.array([x, y]) - np.array(trap)) < 15:
-                spot_man.remove_trap((trap[0], trap[1]))  # Implement this method to remove trap
+                spot_man.remove_trap((trap[0], trap[1]))
                 traps.pop(i)
                 return
 
     elif event == cv2.EVENT_MOUSEMOVE:  # Dragging trap around
-        if dragging_trap_idx[0] is not None: # I should use move trap instead of deleteing and recreating them
+        if dragging_trap_idx[0] is not None:
             spot_man.move_trap((traps[dragging_trap_idx[0]][0], traps[dragging_trap_idx[0]][1]), (x, y))
             traps[dragging_trap_idx[0]] = (x, y)
-            #print(f"{traps[dragging_trap_idx[0]][0]+1},{traps[dragging_trap_idx[0]][1]+1} and {x},{y}")
             return
 
     elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
         dragging_trap_idx[0] = None
+
+    elif event == cv2.EVENT_LBUTTONDBLCLK:
+        # Todo: Select a bead? turn it a different color, then slider can do things to it, switch to line trap, etc...
+        pass
+    elif event == cv2.EVENT_RBUTTONDBLCLK:
+        # Todo: deselect a bead
+        pass
 
 def cam(kp_parent):
     ia = start_image_acquisition()
@@ -235,17 +231,11 @@ def cam(kp_parent):
             os.system("taskkill /f /im  hologram_engine_64.exe")
             break
 
-def exit():
-    # close hologram engine
-    # close opencv window
-    # close camera connection
-    # close any open sockets
-    pass
-
 class SpotManagerManager(BaseManager):
     pass
 
 if __name__ == "__main__":
+    # Todo: Build a higher-level controller!
     SpotManagerManager.register('SpotManager', SpotManager)
     SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
     SpotManagerManager.register('add_spot', SpotManager.add_spot)
@@ -256,12 +246,8 @@ if __name__ == "__main__":
     manager.start()
     frame_queue = multiprocessing.Queue()  # Queue for camera frames
     kp_parent, kp_child = multiprocessing.Pipe()  # Communicates keypoints between processes
-    #trap_parent_one, trap_child_one = multiprocessing.Pipe()  # Communicates trap positions between processes
-    #trap_parent_two, trap_child_two = multiprocessing.Pipe()  # Communicates trap positions between processes
     trap_parent, trap_child = multiprocessing.Pipe()  # Communicates trap positions between processes
     controls_parent, controls_child = multiprocessing.Pipe() # Communicates future optimal controls to simulator
-    #controls_parent_one, controls_child_one = multiprocessing.Pipe()  # Communicates controls between processes
-    #controls_parent_two, controls_child_two = multiprocessing.Pipe()  # Communicates controls between processes
 
     spot_man = manager.SpotManager()
     lock = Lock()
