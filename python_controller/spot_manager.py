@@ -118,7 +118,7 @@ class SpotManager:
         offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
 
         new_pos_scaled = [offset_x, offset_y]
-
+        print(new_pos_scaled)
         # Get the target spot object
         spot = self.grid[old_pos[0]][old_pos[1]]
         self.grid[old_pos[0]][old_pos[1]].active = False

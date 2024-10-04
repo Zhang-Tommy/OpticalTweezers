@@ -133,6 +133,8 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man):
 
             if trap_child.poll():  # Poll for updated trap data (non-blocking)
                 traps = trap_child.recv()
+
+
             for x, y in traps:   # Draw traps
                 cv2.circle(frame, (x, y), 10, (0, 128, 0), -1)
 
@@ -187,6 +189,7 @@ def mouse_callback(event, x, y, flags, param):
         if dragging_trap_idx[0] is not None:
             spot_man.move_trap((traps[dragging_trap_idx[0]][0], traps[dragging_trap_idx[0]][1]), (x, y))
             traps[dragging_trap_idx[0]] = (x, y)
+            #print(traps)
             return
 
     elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
@@ -200,8 +203,8 @@ def mouse_callback(event, x, y, flags, param):
         pass
 
 def cam(kp_parent, trap_child, spot_man, controls_child):
-    vid = cv2.VideoCapture(r'.\testing_video1.mp4')
-    #ia = start_image_acquisition()
+    #vid = cv2.VideoCapture(r'.\testing_video1.mp4')
+    ia = start_image_acquisition()
     dragging_trap_idx = [None]
     k = 0
     def nothing(x):
@@ -213,37 +216,41 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
     points.extend([[0.0, 0.0]] * 100)
     cv2.setMouseCallback("Camera Feed", mouse_callback, param=(spot_man, traps, dragging_trap_idx))
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        while vid.isOpened():
-            #with ia.fetch() as buffer:
-                #component = buffer.payload.components[0]
-                #img = np.ndarray(buffer=component.data.copy(), dtype=np.uint8,
-                #                 shape=(component.height, component.width, 1))
-            ret, img = vid.read()
-            if ret:
-                key_points = camera.detect_beads(img)
+        #while vid.isOpened():
+        while True:
+            with ia.fetch() as buffer:
+                component = buffer.payload.components[0]
+                img = np.ndarray(buffer=component.data.copy(), dtype=np.uint8,
+                                 shape=(component.height, component.width, 1))
 
-                if trap_child.poll():
-                    traps = trap_child.recv()
+            #ret, img = vid.read()
+            #if ret:
+            key_points = camera.detect_beads(img)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            #if trap_child.poll():
+            #    traps = trap_child.recv()
 
-                for x, y in traps:  # Draw traps
-                    cv2.circle(img, (x, y), 15, (256, 0, 256), 1)
+            traps = list(spot_man.get_trapped_beads().keys())
+            for x, y in traps:  # Draw traps
+                cv2.circle(img, (x, y), 15, (256, 0, 256), 1)
 
-                if controls_child.poll():
-                    opt_controls = controls_child.recv().reshape(-1, 2)
-                    for g, cont in enumerate(opt_controls):
-                        if g % 5 == 0:
-                            cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
+            if controls_child.poll():
+                opt_controls = controls_child.recv().reshape(-1, 2)
+                for g, cont in enumerate(opt_controls):
+                    if g % 5 == 0:
+                        cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
 
-                points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
-                if len(points) < 100:  # pad the keypoints with zeros to keep consistent length
-                    points.extend([[0.0, 0.0]] * (100 - len(points)))
+            points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
+            if len(points) < 100:  # pad the keypoints with zeros to keep consistent length
+                points.extend([[0.0, 0.0]] * (100 - len(points)))
 
+            if k % 5 == 0:
                 executor.submit(kp_parent.send, points)
-                cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
+            cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
 
-                cv2.waitKey(10)
-                cv2.imshow('Camera Feed', img)
-                k += 1
+            cv2.waitKey(1)
+            cv2.imshow('Camera Feed', img)
+            k += 1
 
             if keyboard.is_pressed('q'):
                 #ia.stop()

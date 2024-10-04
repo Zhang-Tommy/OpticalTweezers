@@ -31,4 +31,4 @@ N = 50
 # 50
 
 """ Bead radius in pixels"""
-BEAD_RADIUS = 15
+BEAD_RADIUS = 20

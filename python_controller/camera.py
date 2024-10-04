@@ -11,7 +11,7 @@ def detect_beads(image):
 
     # Convert image type for opencv compatibility
     image = np.uint8(image)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    #image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     step1 = np.zeros((h, w, 1), dtype = "uint8")
 

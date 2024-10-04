@@ -12,7 +12,7 @@
 
 <data>
 <window_rect>
-0, 0, 512, 512
+1920, 0, 512, 512
 </window_rect>
 </data>
 

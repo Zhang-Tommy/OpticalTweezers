@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from python_controller.constants import BEAD_RADIUS
+from constants import BEAD_RADIUS
 
 np.seterr(invalid="ignore")
 
