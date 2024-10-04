@@ -199,37 +199,57 @@ def mouse_callback(event, x, y, flags, param):
         # Todo: deselect a bead
         pass
 
-def cam(kp_parent):
-    ia = start_image_acquisition()
-
+def cam(kp_parent, trap_child, spot_man, controls_child):
+    vid = cv2.VideoCapture(r'.\testing_video1.mp4')
+    #ia = start_image_acquisition()
+    dragging_trap_idx = [None]
     k = 0
-    while True:
-        with ia.fetch() as buffer:
-            component = buffer.payload.components[0]
-            img = np.ndarray(buffer=component.data.copy(), dtype=np.uint8,
-                             shape=(component.height, component.width, 1))
+    def nothing(x):
+        pass
 
-            key_points = camera.detect_beads(img)
-            points = []
+    cv2.namedWindow("Camera Feed")
+    traps = []
+    points = []
+    points.extend([[0.0, 0.0]] * 100)
+    cv2.setMouseCallback("Camera Feed", mouse_callback, param=(spot_man, traps, dragging_trap_idx))
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        while vid.isOpened():
+            #with ia.fetch() as buffer:
+                #component = buffer.payload.components[0]
+                #img = np.ndarray(buffer=component.data.copy(), dtype=np.uint8,
+                #                 shape=(component.height, component.width, 1))
+            ret, img = vid.read()
+            if ret:
+                key_points = camera.detect_beads(img)
 
-            if trap_child.poll():
-                traps = trap_child.recv()
-            for trap in traps:
-                cv2.circle(img, (trap[0], trap[1]), 3, (255, 255, 255), -1)
-            for kp in key_points:
-                points.append([kp.pt[0], kp.pt[1]])
-            if k % 10 == 1:
-                kp_parent.send(points)
+                if trap_child.poll():
+                    traps = trap_child.recv()
 
-            cv2.waitKey(10)
-            cv2.imshow('Camera Feed', img)
-            k += 1
+                for x, y in traps:  # Draw traps
+                    cv2.circle(img, (x, y), 15, (256, 0, 256), 1)
 
-        if keyboard.is_pressed('q'):
-            ia.stop()
-            ia.destroy()
-            os.system("taskkill /f /im  hologram_engine_64.exe")
-            break
+                if controls_child.poll():
+                    opt_controls = controls_child.recv().reshape(-1, 2)
+                    for g, cont in enumerate(opt_controls):
+                        if g % 5 == 0:
+                            cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
+
+                points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
+                if len(points) < 100:  # pad the keypoints with zeros to keep consistent length
+                    points.extend([[0.0, 0.0]] * (100 - len(points)))
+
+                executor.submit(kp_parent.send, points)
+                cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
+
+                cv2.waitKey(10)
+                cv2.imshow('Camera Feed', img)
+                k += 1
+
+            if keyboard.is_pressed('q'):
+                #ia.stop()
+                #ia.destroy()
+                os.system("taskkill /f /im  hologram_engine_64.exe")
+                break
 
 class SpotManagerManager(BaseManager):
     pass
@@ -254,16 +274,19 @@ if __name__ == "__main__":
     spot_lock = Lock()
 
     p1 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 0, spot_man))
-    p4 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 1, spot_man)) # likely running into concurrency issues
-    p2 = Process(target=simulator, args=(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man))
+    #p4 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 1, spot_man)) # likely running into concurrency issues
+    #p2 = Process(target=simulator, args=(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man))
     p3 = Process(target=init_holo_engine, args=())
+    p0 = Process(target=cam, args=(kp_parent, trap_child, spot_man, controls_child))
 
-    p2.start()
+    #p2.start()
     p1.start()
     p3.start()
-    p4.start()
+    #p4.start()
+    p0.start()
 
     p1.join()
-    p2.join()
+    #p2.join()
     p3.join()
-    p4.join()
+    #p4.join()
+    p0.join()
