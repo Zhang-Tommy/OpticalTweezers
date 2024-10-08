@@ -14,9 +14,8 @@ from simulator import white_bg
 from spot_manager import SpotManager
 from utilities import *
 
-def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, spot_man):
-    spot_lock.acquire()
-    lock.acquire()
+# Todo: Ensure the controller is aware of beads that other controllers are moving
+def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, spot_man, goal, is_line=False, is_donut=False):
     kps = kp_child.recv() # Blocking, wait until keypoints have been received
 
     num_beads = len(kps) - 1
@@ -27,81 +26,68 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
 
     # Trap the target bead
     spot_man.add_spot((int(x_start), int(y_start)))
-    spot_lock.release()
 
     # Define start and goal states
     start_state = jnp.array([x_start, y_start])
-    goal_position = jnp.array([50, 50])
+    goal_position = jnp.array([goal[0], goal[1]])
 
     kpsarray = jnp.asarray(kps)
-    kpsarray = kpsarray[kpsarray != start_state]  # remove start state from keypoints
+    kpsarray = kpsarray[kpsarray != start_state]
 
-    env = Environment.create(num_beads, kpsarray) ## problematic
+    env = Environment.create(num_beads, kpsarray)
 
-    print(f"KPS: {len(kpsarray)}, NUM_BEADS: {num_beads}")
-
-    N = 125
     init_control = gen_initial_traj(start_state, goal_position, N).T
 
     state = start_state
-
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
 
-    lock.release()
-
     while True:
-        st = time.time()
-        empty_env = Environment.create(0, jnp.array([]))
-        solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N)
-        states, opt_controls = solution["optimal_trajectory"]
-        control = opt_controls[0]
-        #spot_lock.acquire()
         try:
-            spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
-        except:
-            print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
+            st = time.time()
+            empty_env = Environment.create(0, jnp.array([]))
+            solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N)
+            states, opt_controls = solution["optimal_trajectory"]
+            control = opt_controls[0]
+            try:
+                spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
+            except:
+                print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
 
-        traps = list(spot_man.get_trapped_beads().keys())
-        #spot_lock.release()
+            prev_state = state
+            state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
 
-        prev_state = state
-        state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
+            controls_parent.send(opt_controls)
+            if kp_child.poll():
+                kps = kp_child.recv()
+                kpsarray = jnp.asarray(kps)
+                kpsarray = remove_closest_point(kpsarray, prev_state[0], prev_state[1])
 
-        lock.acquire()
-        trap_parent.send(traps) # can just try with two, make non-scalable
-        controls_parent.send(opt_controls)
-        lock.release()
-        if kp_child.poll():
-            kps = kp_child.recv()
-            kpsarray = jnp.asarray(kps)
-            kpsarray = remove_closest_point(kpsarray, prev_state[0], prev_state[1])
+                nearest_kps = []
+                for i, kp in enumerate(kpsarray):
+                    if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
+                        nearest_kps.append(kp)
 
-            nearest_kps = []
-            for i, kp in enumerate(kpsarray):
-                if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
-                    nearest_kps.append(kp)
+                if len(nearest_kps) < 50:
+                    nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
 
-            if len(nearest_kps) < 50:
-                nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
+                nearest_kps = jnp.asarray(nearest_kps)
+                env = env.update(nearest_kps, len(nearest_kps))
 
-            nearest_kps = jnp.asarray(nearest_kps)
-            env = env.update(nearest_kps, len(nearest_kps))
+            dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
+            if dist_to_goal < 5:
+                print("Goal reached!")
+                break
 
-        ## if close to goal, break
-        dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
-        if dist_to_goal < 5:
-            print("Goal reached!")
-            break
+            if keyboard.is_pressed('q'):
+                break
+            et = time.time()
 
-        if keyboard.is_pressed('q'):
-            break
-        et = time.time()
+            # rudimentary timing controller
+            if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
+                time.sleep(0.05 - (et - st))
+        except Exception as e: print(e)
 
-        # rudimentary timing controller
-        if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
-            time.sleep(0.05 - (et - st))
-
-def simulator(kp_parent, controls_child, spot_man):
+def simulator(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent, kp_child, controls_parent):
     """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
     number_of_beads = 50
@@ -123,23 +109,27 @@ def simulator(kp_parent, controls_child, spot_man):
     cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=(spot_man, traps, dragging_trap_idx))
     cv2.createTrackbar('LineTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('DonutTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('Start C0', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('Start C1', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('Start C2', 'Optical Tweezers Simulator', 0, 1, nothing)
-    # Line trap, donut trap, toggle controller, select starting position (which beads), select goal position (which beads should go where)
-    # assemble donut
-    # assemble line
-    # clear area
 
     dynamics = ContinuousTimeObstacleDynamics()
 
-    i = 0
     with concurrent.futures.ThreadPoolExecutor() as executor:
         while True:
+            ctrl_zero = cv2.getTrackbarPos('Start C0', 'Optical Tweezers Simulator')
+            if ctrl_zero:
+                # for each goal position, find a obstacle bead and create controller process
+                for i, goal in enumerate(spot_man.get_goal_pos().keys()):
+                    p = Process(target=holo,
+                                 args=(lock, spot_lock, trap_parent, kp_child, controls_parent, i, spot_man, goal))
+                    p.start()
+                cv2.setTrackbarPos('Start C0', 'Optical Tweezers Simulator', 0)
+
             frame = white_bg.copy()
             sim_man.brownian_move(dt, dynamics)
 
-            traps = spot_man.get_trapped_beads()
-            frame = draw_traps(traps, frame)
+            frame = draw_traps(spot_man, frame)
 
             # Handle controls and draw old/new controls
             if controls_child.poll():
@@ -188,10 +178,14 @@ def mouse_callback(event, x, y, flags, param):
         traps.append((x,y))
 
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
-        for i, trap in enumerate(traps):
+        for j, trap in enumerate(traps):
             if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
                 spot_man.remove_trap((trap[0], trap[1]))
-                traps.pop(i)
+                traps.pop(j)
+                return
+        for goal in spot_man.get_goal_pos().keys():
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
                 return
 
     elif event == cv2.EVENT_MOUSEMOVE:  # Dragging trap around
@@ -210,6 +204,9 @@ def mouse_callback(event, x, y, flags, param):
     elif event == cv2.EVENT_RBUTTONDBLCLK:
         # Todo: deselect a bead
         pass
+    elif event == cv2.EVENT_MBUTTONDOWN:
+        # add goal points
+        spot_man.add_goal_pos((x,y))
 
 def cam(kp_parent, trap_child, spot_man, controls_child):
     #vid = cv2.VideoCapture(r'.\testing_video1.mp4')
@@ -270,32 +267,12 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
 class SpotManagerManager(BaseManager):
     pass
 
-def init_multi_processing():
-    SpotManagerManager.register('SpotManager', SpotManager)
-    SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
-    SpotManagerManager.register('add_spot', SpotManager.add_spot)
-    SpotManagerManager.register('move_trap', SpotManager.move_trap)
-    SpotManagerManager.register('remove_trap', SpotManager.remove_trap)
-
-    manager = SpotManagerManager()
-    manager.start()
-    frame_queue = multiprocessing.Queue()  # Queue for camera frames
-    kp_parent, kp_child = multiprocessing.Pipe()  # Communicates keypoints between processes
-    trap_parent, trap_child = multiprocessing.Pipe()  # Communicates trap positions between processes
-    controls_parent, controls_child = multiprocessing.Pipe()  # Communicates future optimal controls to simulator
-
-    spot_man = manager.SpotManager()
-    lock = Lock()
-    spot_lock = Lock()
-
 if __name__ == "__main__":
-    # Todo: Build a higher-level controller!
     SpotManagerManager.register('SpotManager', SpotManager)
     SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
     SpotManagerManager.register('add_spot', SpotManager.add_spot)
     SpotManagerManager.register('move_trap', SpotManager.move_trap)
     SpotManagerManager.register('remove_trap', SpotManager.remove_trap)
-
 
     manager = SpotManagerManager()
     manager.start()
@@ -308,9 +285,7 @@ if __name__ == "__main__":
     lock = Lock()
     spot_lock = Lock()
 
-    #p1 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 0, spot_man))
-    #p4 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 1, spot_man)) # likely running into concurrency issues
-    p2 = Process(target=simulator, args=(kp_parent, controls_child, spot_man))
+    p2 = Process(target=simulator, args=(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent, kp_child, controls_parent))
     p3 = Process(target=init_holo_engine, args=())
     #p0 = Process(target=cam, args=(kp_parent, trap_child, spot_man, controls_child))
 

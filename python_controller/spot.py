@@ -15,6 +15,7 @@ class Spot:
         self.is_line = False
         self.is_donut = False
         self.angle = 0
+        self.is_goal = False
 
     def change_pos(self, pos):
         """Changes position of the spot rendered"""

@@ -12,12 +12,24 @@ class SpotManager:
         self.trapped_beads = {}  # Holds x,y position (cam_coords) of trapped beads
         self.num_spots = 0  # Number of active traps
         self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
+        self.goal_positions = {}  # holds the user input goal positions
 
     def get_trapped_beads(self):
         """
         Returns dictionary of trapped beads {(x,y): SpotObject}
         """
         return self.trapped_beads
+
+    def get_goal_pos(self):
+        return self.goal_positions
+
+    def add_goal_pos(self, pos):
+        self.goal_positions[pos] = None
+        self.grid[pos[0]][pos[1]].is_goal = True
+
+    def remove_goal_pos(self, pos):
+        self.goal_positions.pop(pos)
+        self.grid[pos[0]][pos[1]].is_goal = False
 
     def get_spots(self):
         """
@@ -26,13 +38,15 @@ class SpotManager:
         spot_vals = np.zeros(16*self.num_spots)
         count = 0
 
-        for bead in self.trapped_beads:
-            bead_params = self.grid[bead[0]][bead[1]].get_spot_params()
-            for i in range(16):
-                spot_vals[count] = bead_params[i]
-                count += 1
-
-        self.spots_vec = spot_vals
+        if self.num_spots > 0:
+            for bead in self.trapped_beads:
+                bead_params = self.grid[bead[0]][bead[1]].get_spot_params()
+                for i in range(16):
+                    spot_vals[count] = bead_params[i]
+                    count += 1
+            self.spots_vec = spot_vals
+        else:
+            self.spots_vec = np.zeros(3200)
 
     def check_bounds(self, pos):
         """
@@ -55,9 +69,18 @@ class SpotManager:
 
         # Format the numbers with 6 decimal places and join them with a single space
         string = ' '.join(f'{val:.6f}' for val in self.spots_vec[0:self.num_spots * 16])
-
+        self.update_num_traps()
         packet = start + string + end
+
         # Send to hologram engine
+        send_data(packet)
+
+    def update_num_traps(self):
+        start = '<uniform id=0>\n'
+        end = '\n</uniform>'
+
+        string = f'{self.num_spots:.6f}'
+        packet = start + string + end
         send_data(packet)
 
     def add_spot(self, pos, is_line=False, is_donut=False):
@@ -105,9 +128,11 @@ class SpotManager:
 
     def remove_trap(self, pos):
         new_spot = Spot()
+        new_spot.spot_vec = np.zeros(16)
         self.trapped_beads.pop(pos)
         self.grid[pos[0]][pos[1]] = new_spot
         self.num_spots -= 1
+        self.update_traps()
 
     def offset_misalignment(self, pos):
         #offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
