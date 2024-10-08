@@ -101,7 +101,7 @@ def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, s
         if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
             time.sleep(0.05 - (et - st))
 
-def simulator(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man):
+def simulator(kp_parent, controls_child, spot_man):
     """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
     number_of_beads = 50
@@ -121,22 +121,25 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man):
 
     cv2.namedWindow("Optical Tweezers Simulator")
     cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=(spot_man, traps, dragging_trap_idx))
-    cv2.createTrackbar('R', 'Optical Tweezers Simulator', 0, 255, nothing)
+    cv2.createTrackbar('LineTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('DonutTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('Start C1', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('Start C2', 'Optical Tweezers Simulator', 0, 1, nothing)
+    # Line trap, donut trap, toggle controller, select starting position (which beads), select goal position (which beads should go where)
+    # assemble donut
+    # assemble line
+    # clear area
+
     dynamics = ContinuousTimeObstacleDynamics()
 
     i = 0
     with concurrent.futures.ThreadPoolExecutor() as executor:
         while True:
             frame = white_bg.copy()
-
             sim_man.brownian_move(dt, dynamics)
 
-            if trap_child.poll():  # Poll for updated trap data (non-blocking)
-                traps = trap_child.recv()
-
-
-            for x, y in traps:   # Draw traps
-                cv2.circle(frame, (x, y), 10, (0, 128, 0), -1)
+            traps = spot_man.get_trapped_beads()
+            frame = draw_traps(traps, frame)
 
             # Handle controls and draw old/new controls
             if controls_child.poll():
@@ -168,19 +171,25 @@ def simulator(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man):
 
 def mouse_callback(event, x, y, flags, param):
     spot_man, traps, dragging_trap_idx = param
-
+    line_trap = cv2.getTrackbarPos('LineTrap', 'Optical Tweezers Simulator')
+    donut_trap = cv2.getTrackbarPos('DonutTrap', 'Optical Tweezers Simulator')
     if event == cv2.EVENT_LBUTTONDOWN:  # Left click to add or select trap
         for i, trap in enumerate(traps):
             if np.linalg.norm(np.array([x, y]) - np.array(trap)) < 15:
                 dragging_trap_idx[0] = i  # Start dragging this trap
                 return
         # Add new trap if none selected
-        spot_man.add_spot((x, y))
-        traps.append((x, y))
+        if line_trap:
+            spot_man.add_spot((x,y), is_line=True)
+        elif donut_trap:
+            spot_man.add_spot((x,y), is_donut=True)
+        else:
+            spot_man.add_spot((x,y))
+        traps.append((x,y))
 
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
         for i, trap in enumerate(traps):
-            if np.linalg.norm(np.array([x, y]) - np.array(trap)) < 15:
+            if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
                 spot_man.remove_trap((trap[0], trap[1]))
                 traps.pop(i)
                 return
@@ -230,9 +239,9 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
             #if trap_child.poll():
             #    traps = trap_child.recv()
 
-            traps = list(spot_man.get_trapped_beads().keys())
-            for x, y in traps:  # Draw traps
-                cv2.circle(img, (x, y), 15, (256, 0, 256), 1)
+            traps = spot_man.get_trapped_beads()
+
+            img = draw_traps(traps, img)
 
             if controls_child.poll():
                 opt_controls = controls_child.recv().reshape(-1, 2)
@@ -261,13 +270,32 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
 class SpotManagerManager(BaseManager):
     pass
 
+def init_multi_processing():
+    SpotManagerManager.register('SpotManager', SpotManager)
+    SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
+    SpotManagerManager.register('add_spot', SpotManager.add_spot)
+    SpotManagerManager.register('move_trap', SpotManager.move_trap)
+    SpotManagerManager.register('remove_trap', SpotManager.remove_trap)
+
+    manager = SpotManagerManager()
+    manager.start()
+    frame_queue = multiprocessing.Queue()  # Queue for camera frames
+    kp_parent, kp_child = multiprocessing.Pipe()  # Communicates keypoints between processes
+    trap_parent, trap_child = multiprocessing.Pipe()  # Communicates trap positions between processes
+    controls_parent, controls_child = multiprocessing.Pipe()  # Communicates future optimal controls to simulator
+
+    spot_man = manager.SpotManager()
+    lock = Lock()
+    spot_lock = Lock()
+
 if __name__ == "__main__":
     # Todo: Build a higher-level controller!
     SpotManagerManager.register('SpotManager', SpotManager)
     SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
     SpotManagerManager.register('add_spot', SpotManager.add_spot)
     SpotManagerManager.register('move_trap', SpotManager.move_trap)
-    SpotManagerManager.register('move_trap', SpotManager.remove_trap)
+    SpotManagerManager.register('remove_trap', SpotManager.remove_trap)
+
 
     manager = SpotManagerManager()
     manager.start()
@@ -280,20 +308,15 @@ if __name__ == "__main__":
     lock = Lock()
     spot_lock = Lock()
 
-    p1 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 0, spot_man))
+    #p1 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 0, spot_man))
     #p4 = Process(target=holo, args=(lock, spot_lock, trap_parent, kp_child, controls_parent, 1, spot_man)) # likely running into concurrency issues
-    #p2 = Process(target=simulator, args=(lock, spot_lock, trap_child, kp_parent, controls_child, spot_man))
+    p2 = Process(target=simulator, args=(kp_parent, controls_child, spot_man))
     p3 = Process(target=init_holo_engine, args=())
-    p0 = Process(target=cam, args=(kp_parent, trap_child, spot_man, controls_child))
+    #p0 = Process(target=cam, args=(kp_parent, trap_child, spot_man, controls_child))
 
-    #p2.start()
-    p1.start()
+    p2.start()
     p3.start()
-    #p4.start()
-    p0.start()
 
-    p1.join()
-    #p2.join()
+    p2.join()
     p3.join()
-    #p4.join()
-    p0.join()
+

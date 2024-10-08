@@ -60,23 +60,18 @@ class SpotManager:
         # Send to hologram engine
         send_data(packet)
 
-    def add_spot(self, pos):
-        """
-        Creates a point trap at the desired position
-        @param pos: x,y position in camera coords
-        """
-        offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
-        offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
-
-        new_pos_scaled = [offset_x, offset_y]
+    def add_spot(self, pos, is_line=False, is_donut=False):
+        new_pos_scaled = self.offset_misalignment(pos)
 
         if self.check_bounds(pos):
             new_spot = Spot()
             new_spot.change_pos(cam_to_um(new_pos_scaled))
             self.trapped_beads[pos] = new_spot
-
             self.num_spots += 1
-            #print(f'{pos[0]} {pos[1]}')
+            if is_line:
+                new_spot.set_line_params()
+            elif is_donut:
+                new_spot.set_donut_params()
             # Add to the grid and update holo engine
             if not self.grid[pos[0]][pos[1]].active:
                 self.grid[pos[0]][pos[1]] = new_spot
@@ -86,27 +81,6 @@ class SpotManager:
                 print(f'Trap already exists at {pos[0]}, {pos[1]}')
                 pass
 
-
-    def add_line_spot(self, pos, length, angle):
-        """
-        Creates line trap with desired position, length and angle
-        @param pos: x, y position of the line trap in camera coords
-        @param length: length of line trap in camera coords
-        @param angle: angle of the line trap in degrees
-        """
-        offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
-        offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
-        new_pos_scaled = [offset_x, offset_y]
-
-        if self.check_bounds(pos):
-            new_spot = Spot()
-            new_spot.change_pos(cam_to_um(new_pos_scaled))
-
-        pass
-
-    def add_annular_spot(self):
-        pass
-
     def move_trap(self, old_pos, new_pos):
         """
         Moves the spot trap from current position to desired position
@@ -114,11 +88,8 @@ class SpotManager:
         @param new_pos: desired position in camera coords
         """
         pos = new_pos
-        offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
-        offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
-
-        new_pos_scaled = [offset_x, offset_y]
-        print(new_pos_scaled)
+        new_pos_scaled = self.offset_misalignment(pos)
+        #print(new_pos_scaled)
         # Get the target spot object
         spot = self.grid[old_pos[0]][old_pos[1]]
         self.grid[old_pos[0]][old_pos[1]].active = False
@@ -137,3 +108,10 @@ class SpotManager:
         self.trapped_beads.pop(pos)
         self.grid[pos[0]][pos[1]] = new_spot
         self.num_spots -= 1
+
+    def offset_misalignment(self, pos):
+        #offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
+        #offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
+        #R = np.array([[np.cos(ANGLE), -np.sin(ANGLE)],
+        #          [np.sin(ANGLE), np.cos(ANGLE)]])
+        return [pos[1], pos[0]]

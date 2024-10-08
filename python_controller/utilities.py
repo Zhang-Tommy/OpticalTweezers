@@ -3,6 +3,7 @@ import socket
 import subprocess
 import time
 import numpy as np
+import cv2
 
 from harvesters.core import Harvester
 from constants import *
@@ -41,6 +42,30 @@ def init_holo_engine():
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
     server_socket.close()
     return holo_process
+
+def draw_traps(traps, frame):
+    """
+    Draws line, donut, and point traps on the displayed image
+    """
+    for key in traps:  # Draw traps
+        x, y = key
+        spot = traps.get(key)
+        if spot.is_line:
+            length = 60
+            half_length = length / 2
+            angle = spot.angle
+
+            x_start = int(x - half_length * np.cos(angle))
+            y_start = int(y - half_length * np.sin(angle))
+            x_end = int(x + half_length * np.cos(angle))
+            y_end = int(y + half_length * np.sin(angle))
+
+            cv2.line(frame, (x_start, y_start), (x_end, y_end), (256, 0, 256), 1)
+        elif spot.is_donut:
+            cv2.circle(frame, (x, y), 32, (256, 0, 0), 1)
+        else:
+            cv2.circle(frame, (x, y), 12, (0, 256, 0), 1)
+    return frame
 
 def start_image_acquisition():
     """ Initializes the gigE camera"""

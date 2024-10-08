@@ -32,3 +32,10 @@ N = 50
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 20
+
+""" Default line trap length"""
+LINE_TRAP_LENGTH = 8
+LINE_TRAP_ANGLE = 0
+
+""" Annular trap vortex charge/twist """
+ANNULAR_TRAP_VORTEX_CHARGE = 12

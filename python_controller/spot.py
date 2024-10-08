@@ -12,6 +12,9 @@ class Spot:
         self.spot_vec[2] = Z_OFFSET  # z-axis offset
         self.active = False
         self.is_obstacle = False
+        self.is_line = False
+        self.is_donut = False
+        self.angle = 0
 
     def change_pos(self, pos):
         """Changes position of the spot rendered"""
@@ -31,3 +34,16 @@ class Spot:
 
     def get_spot_params(self):
         return self.spot_vec
+
+    def set_line_params(self, length=LINE_TRAP_LENGTH, angle=LINE_TRAP_ANGLE):
+        # element 3 line trapping x y z and phase gradient.  xyz define the size and angle of the line
+        x_length = length * np.cos(angle)
+        y_length = length * np.sin(angle)
+        self.angle = angle
+        self.spot_vec[12] = x_length
+        self.spot_vec[13] = y_length
+        self.is_line = True
+
+    def set_donut_params(self, l=ANNULAR_TRAP_VORTEX_CHARGE):
+        self.spot_vec[3] = l
+        self.is_donut = True

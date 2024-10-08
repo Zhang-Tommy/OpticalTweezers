@@ -11,7 +11,7 @@ def detect_beads(image):
 
     # Convert image type for opencv compatibility
     image = np.uint8(image)
-    #image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     step1 = np.zeros((h, w, 1), dtype = "uint8")
 
@@ -22,7 +22,7 @@ def detect_beads(image):
 
     # Initialize blob detector
     params = cv2.SimpleBlobDetector.Params()
-    params.minArea = 500
+    params.minArea = 300
     params.minCircularity = 0.5 #0.85 original value
     params.minInertiaRatio = 0.01
     params.minConvexity = 0.87
