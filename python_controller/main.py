@@ -15,26 +15,36 @@ from spot_manager import SpotManager
 from utilities import *
 
 # Todo: Ensure the controller is aware of beads that other controllers are moving
-def holo(lock, spot_lock, trap_parent, kp_child, controls_parent, target_bead, spot_man, goal, is_line=False, is_donut=False):
+def holo(kp_child, controls_parent, target_bead, spot_man, goal, start=None, is_donut=False, is_line=False):
     kps = kp_child.recv() # Blocking, wait until keypoints have been received
 
-    num_beads = len(kps) - 1
-
-    # Choose first detected bead as our target bead
-    x_start = float(kps[target_bead][0])
-    y_start = float(kps[target_bead][1])
-
-    # Trap the target bead
-    spot_man.add_spot((int(x_start), int(y_start)))
+    if not is_donut and not is_line:
+        # Choose first detected bead as our target bead
+        x_start = float(kps[target_bead][0])
+        y_start = float(kps[target_bead][1])
+        # Trap the target bead
+        spot_man.add_spot((int(x_start), int(y_start)))
+        goal_position = jnp.array([goal[0], goal[1]])
+    elif is_donut:
+        start_pos = start[0]
+        spot_man.add_spot((start_pos[0], start_pos[1]), is_donut=True)
+        x_start = float(start_pos[0])
+        y_start = float(start_pos[1])
+        goal_position = jnp.array([goal[0][0], goal[0][1]])
+    elif is_line:
+        start_pos = start[0]
+        spot_man.add_spot((start_pos[0], start_pos[1]), is_line=True)
+        x_start = float(start_pos[0])
+        y_start = float(start_pos[1])
+        goal_position = jnp.array([goal[0][0], goal[0][1]])
 
     # Define start and goal states
     start_state = jnp.array([x_start, y_start])
-    goal_position = jnp.array([goal[0], goal[1]])
 
     kpsarray = jnp.asarray(kps)
     kpsarray = kpsarray[kpsarray != start_state]
 
-    env = Environment.create(num_beads, kpsarray)
+    env = Environment.create(int(len(kpsarray)/2), kpsarray)
 
     init_control = gen_initial_traj(start_state, goal_position, N).T
 
@@ -100,31 +110,44 @@ def simulator(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent,
         y_start = random.randint(0, CAM_Y - 1)
         sim_man.add_bead((x_start, y_start))
 
-    traps = []
+    traps, donut_start, donut_goal, line_start, line_goal = [], [], [], [], []
 
     def nothing(x):
         pass
 
     cv2.namedWindow("Optical Tweezers Simulator")
-    cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=(spot_man, traps, dragging_trap_idx))
+    params = [spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal]
+    cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=params)
     cv2.createTrackbar('LineTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('DonutTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
-    cv2.createTrackbar('Start C0', 'Optical Tweezers Simulator', 0, 1, nothing)
-    cv2.createTrackbar('Start C1', 'Optical Tweezers Simulator', 0, 1, nothing)
-    cv2.createTrackbar('Start C2', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('MoveToGoals', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0, 1, nothing)
 
     dynamics = ContinuousTimeObstacleDynamics()
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         while True:
-            ctrl_zero = cv2.getTrackbarPos('Start C0', 'Optical Tweezers Simulator')
+            ctrl_zero = cv2.getTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator')
+            ctrl_one = cv2.getTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator')
             if ctrl_zero:
                 # for each goal position, find a obstacle bead and create controller process
                 for i, goal in enumerate(spot_man.get_goal_pos().keys()):
                     p = Process(target=holo,
-                                 args=(lock, spot_lock, trap_parent, kp_child, controls_parent, i, spot_man, goal))
+                                 args=(kp_child, controls_parent, i, spot_man, goal))
                     p.start()
-                cv2.setTrackbarPos('Start C0', 'Optical Tweezers Simulator', 0)
+                cv2.setTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator', 0)
+            elif ctrl_one:
+                # # start controllers with annular trap and line trap\
+                print(donut_start)
+                print(line_start)
+                p0 = Process(target=holo,
+                            args=(kp_child, controls_parent, None, spot_man, donut_goal, donut_start, True, False))
+                p0.start()
+
+                p1 = Process(target=holo,
+                            args=(kp_child, controls_parent, None, spot_man, line_goal, line_start, False, True))
+                p1.start()
+                cv2.setTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0)
 
             frame = white_bg.copy()
             sim_man.brownian_move(dt, dynamics)
@@ -160,23 +183,31 @@ def simulator(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent,
     cv2.destroyAllWindows()
 
 def mouse_callback(event, x, y, flags, param):
-    spot_man, traps, dragging_trap_idx = param
+    spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal = param
     line_trap = cv2.getTrackbarPos('LineTrap', 'Optical Tweezers Simulator')
     donut_trap = cv2.getTrackbarPos('DonutTrap', 'Optical Tweezers Simulator')
-    if event == cv2.EVENT_LBUTTONDOWN:  # Left click to add or select trap
+    if event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_ALTKEY: # donut
+        donut_goal.append((x, y))
+        print("Donut Goal Added")
+    elif event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_CTRLKEY: # line
+        line_goal.append((x, y))
+        print("Line Goal Added")
+    elif event == cv2.EVENT_LBUTTONDOWN:  # Left click to add or select trap
         for i, trap in enumerate(traps):
             if np.linalg.norm(np.array([x, y]) - np.array(trap)) < 15:
                 dragging_trap_idx[0] = i  # Start dragging this trap
                 return
         # Add new trap if none selected
         if line_trap:
-            spot_man.add_spot((x,y), is_line=True)
+            #spot_man.add_spot((x,y), is_line=True)
+            line_start.append((x, y))
         elif donut_trap:
-            spot_man.add_spot((x,y), is_donut=True)
+            #spot_man.add_spot((x,y), is_donut=True)
+            donut_start.append((x, y))
         else:
             spot_man.add_spot((x,y))
-        traps.append((x,y))
 
+        traps.append((x,y))
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
         for j, trap in enumerate(traps):
             if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
@@ -187,20 +218,14 @@ def mouse_callback(event, x, y, flags, param):
             if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
                 spot_man.remove_goal_pos((goal[0], goal[1]))
                 return
-
     elif event == cv2.EVENT_MOUSEMOVE:  # Dragging trap around
         if dragging_trap_idx[0] is not None:
             spot_man.move_trap((traps[dragging_trap_idx[0]][0], traps[dragging_trap_idx[0]][1]), (x, y))
             traps[dragging_trap_idx[0]] = (x, y)
             #print(traps)
             return
-
     elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
         dragging_trap_idx[0] = None
-
-    elif event == cv2.EVENT_LBUTTONDBLCLK:
-        # Todo: Select a bead? turn it a different color, then slider can do things to it, switch to line trap, etc...
-        pass
     elif event == cv2.EVENT_RBUTTONDBLCLK:
         # Todo: deselect a bead
         pass
