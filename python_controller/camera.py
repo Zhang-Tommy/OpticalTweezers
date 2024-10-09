@@ -4,14 +4,15 @@ from harvesters.core import Harvester
 
 
 # Input video frame and output coordinates of detected beads
-def detect_beads(image):
+def detect_beads(image, is_simulator=False):
     h = image.shape[0]
     w = image.shape[1]
     offset = 2
 
     # Convert image type for opencv compatibility
     image = np.uint8(image)
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    if is_simulator:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     step1 = np.zeros((h, w, 1), dtype = "uint8")
 
