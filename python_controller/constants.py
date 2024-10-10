@@ -41,7 +41,7 @@ LINE_TRAP_ANGLE = 0
 ANNULAR_TRAP_VORTEX_CHARGE = 12  #
 
 """ Obstacle separation boundary"""
-OBSTACLE_SEPARATION = 25
+OBSTACLE_SEPARATION = 26
 
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
 KPS_SIZE = 150

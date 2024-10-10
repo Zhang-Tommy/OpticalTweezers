@@ -7,6 +7,71 @@ import cv2
 
 from harvesters.core import Harvester
 from constants import *
+from multiprocessing.managers import BaseManager
+
+class SpotManagerManager(BaseManager):
+    pass
+
+def mouse_callback(event, x, y, flags, param):
+    spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal = param
+    line_trap = cv2.getTrackbarPos('LineTrap', 'Optical Tweezers Simulator')
+    donut_trap = cv2.getTrackbarPos('DonutTrap', 'Optical Tweezers Simulator')
+    if event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_ALTKEY: # donut
+        donut_goal.append((x, y))
+        print("Donut Goal Added")
+    elif event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_CTRLKEY: # line
+        line_goal.append((x, y))
+        print("Line Goal Added")
+    elif event == cv2.EVENT_LBUTTONDOWN:  # Left click to add or select trap
+        for i, trap in enumerate(traps):
+            if np.linalg.norm(np.array([x, y]) - np.array(trap)) < 15:
+                dragging_trap_idx[0] = i  # Start dragging this trap
+                return
+        # Add new trap if none selected
+        if line_trap:
+            spot_man.add_spot((x,y), is_line=True)
+            line_start.append((x, y))
+        elif donut_trap:
+            spot_man.add_spot((x,y), is_donut=True)
+            donut_start.append((x, y))
+        else:
+            spot_man.add_spot((x,y))
+
+        traps.append((x,y))
+    elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
+        # if np.linalg.norm(np.array([x, y]) - np.array(line_goal[0])) < 15:
+        #         #     line_goal.clear()
+        #         #     #spot_man.remove_trap((trap[0], trap[1]))
+        #         #     #traps.pop(j)
+        #         #     return
+        #         # if np.linalg.norm(np.array([x, y]) - np.array(donut_goal[0])) < 15:
+        #         #     donut_goal.clear()
+        #         #     #spot_man.remove_trap((trap[0], trap[1]))
+        #         #     #traps.pop(j)
+        #         #     return
+        for j, trap in enumerate(traps):
+            if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
+                spot_man.remove_trap((trap[0], trap[1]))
+                traps.pop(j)
+                return
+        for goal in spot_man.get_goal_pos().keys():
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
+                return
+    elif event == cv2.EVENT_MOUSEMOVE:  # Dragging trap around
+        if dragging_trap_idx[0] is not None:
+            spot_man.move_trap((traps[dragging_trap_idx[0]][0], traps[dragging_trap_idx[0]][1]), (x, y))
+            traps[dragging_trap_idx[0]] = (x, y)
+            #print(traps)
+            return
+    elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
+        dragging_trap_idx[0] = None
+    elif event == cv2.EVENT_RBUTTONDBLCLK:
+        # Todo: deselect a bead
+        pass
+    elif event == cv2.EVENT_MBUTTONDOWN:
+        # add goal point
+        spot_man.add_goal_pos((x,y))
 
 def init_holo_engine():
     """Initializes hologram engine by sending shader source code and updating uniform variables
@@ -76,7 +141,7 @@ def draw_traps(spot_man, frame, sim_man, donut_goal, line_goal):
 
             cv2.line(frame, (x_start, y_start), (x_end, y_end), (256, 0, 256), 1)
         elif spot.is_donut:
-            cv2.circle(frame, (x, y), 32, (256, 0, 0), 1)
+            cv2.circle(frame, (x, y), 23, (256, 0, 0), 1)
         else:
             cv2.circle(frame, (x, y), 12, (0, 256, 0), 1)
     return frame

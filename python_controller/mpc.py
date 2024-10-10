@@ -384,22 +384,67 @@ class RunningCost(NamedTuple):
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
         separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
-        total_separation = 1e-3 * jnp.sum(separation_distance**2)
-        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > OBSTACLE_SEPARATION, 0, 1e3 * (OBSTACLE_SEPARATION - separation_distance) ** 2))
+        total_separation = 3e-4 * jnp.sum(separation_distance)**2
+        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 25, 0, 1e3 * (25 - separation_distance) ** 2))
         #collision_penalty = jnp.sum(
         #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
-        x_dist = 1e4 * (state[0] - u_x) ** 2 #1e3
-        y_dist = 1e4 * (state[1] - u_y) ** 2
+        x_dist = 1e3 * (state[0] - u_x) ** 2 #1e3
+        y_dist = 1e3 * (state[1] - u_y) ** 2
 
-        min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e4, 0)
+        min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e3, 0)
+
         # how to allow for backtracking? balance cost of getting near object/ramming through it with cost of taking a longer route
         #minimize sum of distances away from beads
 
         #
-        return collision_avoidance_penalty + x_dist + y_dist + min_move
+        return collision_avoidance_penalty + x_dist + y_dist #- total_separation
 
 
+class MPCTerminalCost(NamedTuple):
+    env: Environment
+    goal_position: jnp.array
+
+    @classmethod
+    def create_ignoring_extra_args(cls, env, goal_position, *args, **kwargs):
+        return cls(env, goal_position)
+
+    def __call__(self, state):
+        distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+        #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
+        #goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
+        goal_penalty = distance_to_goal ** 2
+        return 1e3 * goal_penalty
+        #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
+
+# class RunningCost(NamedTuple):
+#     env: Environment
+#     dt: jnp.array
+#
+#     def __call__(self, state, control, step):
+#         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
+#         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
+#         asteroids = self.env.asteroids
+#         separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+#         total_separation = 1e-3 * jnp.sum(separation_distance**2)
+#
+#         #soft_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 2*OBSTACLE_SEPARATION, 0,  1e2 * (OBSTACLE_SEPARATION - separation_distance) ** 2))
+#
+#         hard_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 1.75*OBSTACLE_SEPARATION, 0, 1e3 * (OBSTACLE_SEPARATION - separation_distance) ** 2))
+#
+#         u_x, u_y = control
+#         x_dist = 3e3 * (state[0] - u_x) ** 2 #1e3
+#         y_dist = 3e3 * (state[1] - u_y) ** 2
+#
+#         #min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e4, 0)
+#
+#         total_cost = x_dist + y_dist + hard_avoidance_penalty
+#
+#         #jax.debug.print("{}", total_cost)
+#
+#         return total_cost
+#
+#
 # class MPCTerminalCost(NamedTuple):
 #     env: Environment
 #     goal_position: jnp.array
@@ -412,32 +457,32 @@ class RunningCost(NamedTuple):
 #         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
 #         #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
 #         goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
-#         #goal_penalty = distance_to_goal ** 2
+#        # goal_penalty = distance_to_goal ** 2
 #         #goal_penalty = jnp.where(distance_to_goal > 25, distance_to_goal ** 2, distance_to_goal ** 10)
 #
-#         return 1e3 * goal_penalty
+#         return 1e4 * goal_penalty
 #         #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
-class MPCTerminalCost(NamedTuple):
-    env: Environment
-    goal_position: jnp.array
-
-    @classmethod
-    def create_ignoring_extra_args(cls, env, goal_position, *args, **kwargs):
-        return cls(env, goal_position)
-
-    def __call__(self, state):
-        distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
-
-        far_goal_penalty = jnp.where(distance_to_goal > 75, (distance_to_goal - 75), 0)
-
-        near_goal_penalty = jnp.where(distance_to_goal <= 75,
-                                      distance_to_goal ** 2,
-                                      0)
-
-        goal_penalty = far_goal_penalty + near_goal_penalty
-
-        return 1e3 * goal_penalty
+# class MPCTerminalCost(NamedTuple):
+#     env: Environment
+#     goal_position: jnp.array
+#
+#     @classmethod
+#     def create_ignoring_extra_args(cls, env, goal_position, *args, **kwargs):
+#         return cls(env, goal_position)
+#
+#     def __call__(self, state):
+#         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+#
+#         far_goal_penalty = jnp.where(distance_to_goal > 75, (distance_to_goal - 75), 0)
+#
+#         near_goal_penalty = jnp.where(distance_to_goal <= 75,
+#                                       distance_to_goal ** 2,
+#                                       0)
+#
+#         goal_penalty = far_goal_penalty + near_goal_penalty
+#
+#         return 1e3 * goal_penalty
 
 class FullHorizonTerminalCost(NamedTuple):
     env: Environment
