@@ -146,8 +146,12 @@ class SpotManager:
         self.update_traps()
 
     def offset_misalignment(self, pos):
-        #offset_x = (pos[0] * SCALE_X * np.cos(ANGLE)) - (pos[1] * SCALE_Y * np.sin(ANGLE))
-        #offset_y = (-(pos[1] * SCALE_X * np.sin(ANGLE)) + (pos[0] * SCALE_Y * np.cos(ANGLE)))
-        #R = np.array([[np.cos(ANGLE), -np.sin(ANGLE)],
-        #          [np.sin(ANGLE), np.cos(ANGLE)]])
-        return [pos[1], pos[0]]
+        x, y = pos
+        x_rotated = x * np.cos(ANGLE) - y * np.sin(ANGLE)
+        y_rotated = x * np.sin(ANGLE) + y * np.cos(ANGLE)
+
+        offset_x = x_rotated * SCALE_X
+        offset_y = y_rotated * SCALE_Y
+
+        return offset_y, offset_x
+

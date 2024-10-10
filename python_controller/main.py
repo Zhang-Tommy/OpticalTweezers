@@ -242,16 +242,16 @@ def mouse_callback(event, x, y, flags, param):
 
         traps.append((x,y))
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
-        if np.linalg.norm(np.array([x, y]) - np.array(line_goal)) < 15:
-            line_goal.clear()
-            #spot_man.remove_trap((trap[0], trap[1]))
-            #traps.pop(j)
-            return
-        if np.linalg.norm(np.array([x, y]) - np.array(donut_goal)) < 15:
-            donut_goal.clear()
-            #spot_man.remove_trap((trap[0], trap[1]))
-            #traps.pop(j)
-            return
+        # if np.linalg.norm(np.array([x, y]) - np.array(line_goal[0])) < 15:
+        #         #     line_goal.clear()
+        #         #     #spot_man.remove_trap((trap[0], trap[1]))
+        #         #     #traps.pop(j)
+        #         #     return
+        #         # if np.linalg.norm(np.array([x, y]) - np.array(donut_goal[0])) < 15:
+        #         #     donut_goal.clear()
+        #         #     #spot_man.remove_trap((trap[0], trap[1]))
+        #         #     #traps.pop(j)
+        #         #     return
         for j, trap in enumerate(traps):
             if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
                 spot_man.remove_trap((trap[0], trap[1]))
@@ -276,8 +276,7 @@ def mouse_callback(event, x, y, flags, param):
         # add goal points
         spot_man.add_goal_pos((x,y))
 
-def cam(kp_parent, trap_child, spot_man, controls_child):
-    #vid = cv2.VideoCapture(r'.\testing_video1.mp4')
+def cam(kp_parent, trap_child, spot_man, controls_child, kp_child, controls_parent):
     ia = start_image_acquisition()
     dragging_trap_idx = [None]
     k = 0
@@ -295,31 +294,27 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
     cv2.createTrackbar('MoveToGoals', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0, 1, nothing)
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        #while vid.isOpened():
         while True:
             with ia.fetch() as buffer:
                 component = buffer.payload.components[0]
                 img = np.ndarray(buffer=component.data.copy(), dtype=np.uint8,
                                  shape=(component.height, component.width, 1))
 
-            #ret, img = vid.read()
-            #if ret:
             key_points = camera.detect_beads(img)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            #if trap_child.poll():
-            #    traps = trap_child.recv()
 
             ctrl_zero = cv2.getTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator')
             ctrl_one = cv2.getTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator')
             if ctrl_zero:
                 # for each goal position, find a obstacle bead and create controller process
                 for i, goal in enumerate(spot_man.get_goal_pos().keys()):
-                    p = Process(target=holo,
-                                args=(kp_child, controls_parent, i, spot_man, goal))
-                    p.start()
+                    if i < len(spot_man.get_trapped_beads().keys()):
+                        p = Process(target=holo,
+                                    args=(kp_child, controls_parent, i, spot_man, goal))
+                        p.start()
                 cv2.setTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator', 0)
             elif ctrl_one:
-                # # start controllers with annular trap and line trap\
+                # start controllers with annular trap and line trap
                 print(donut_start)
                 print(line_start)
                 p0 = Process(target=holo,
@@ -331,9 +326,7 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
                 p1.start()
                 cv2.setTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0)
 
-            traps = spot_man.get_trapped_beads()
-
-            img = draw_traps(traps, img)
+            img = draw_traps(spot_man, img, 2, donut_goal, line_goal)
 
             if controls_child.poll():
                 opt_controls = controls_child.recv().reshape(-1, 2)
@@ -341,16 +334,11 @@ def cam(kp_parent, trap_child, spot_man, controls_child):
                     if g % 5 == 0:
                         cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
 
-            points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
-            if len(points) < 100:  # pad the keypoints with zeros to keep consistent length
-                points.extend([[0.0, 0.0]] * (100 - len(points)))
-
-            if k % 5 == 0:
-                executor.submit(kp_parent.send, points)
             cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
-
+            points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
+            spot_man.set_obstacles(points)
             cv2.waitKey(1)
-            cv2.imshow('Camera Feed', img)
+            cv2.imshow('Optical Tweezers Simulator', img)
             k += 1
 
             if keyboard.is_pressed('q'):
@@ -380,13 +368,14 @@ if __name__ == "__main__":
     lock = Lock()
     spot_lock = Lock()
 
-    p2 = Process(target=simulator, args=(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent, kp_child, controls_parent))
+    #p2 = Process(target=simulator, args=(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent, kp_child, controls_parent))
     p3 = Process(target=init_holo_engine, args=())
-    #p0 = Process(target=cam, args=(kp_parent, trap_child, spot_man, controls_child))
+    #time.sleep(2)
+    p0 = Process(target=cam, args=(kp_parent, trap_child, spot_man, controls_child, kp_child, controls_parent))
 
-    p2.start()
+    p0.start()
     p3.start()
 
-    p2.join()
+    p0.join()
     p3.join()
 
