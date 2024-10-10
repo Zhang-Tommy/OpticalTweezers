@@ -43,12 +43,18 @@ def init_holo_engine():
     server_socket.close()
     return holo_process
 
-def draw_traps(spot_man, frame, sim_man):
+def draw_traps(spot_man, frame, sim_man, donut_goal, line_goal):
     """
     Draws line, donut, and point traps on the displayed image
     """
     traps = spot_man.get_trapped_beads()
     goals = spot_man.get_goal_pos()
+
+    if donut_goal:
+        cv2.circle(frame, (donut_goal[0][0], donut_goal[0][1]), 4, (0, 128, 256), -1)
+        cv2.circle(frame, (donut_goal[0][0], donut_goal[0][1]), 8, (0, 128, 256), 1)
+    if line_goal:
+        cv2.circle(frame, (line_goal[0][0], line_goal[0][1]), 4, (64, 128, 0), 1)
 
     for goal in goals:
         x, y = goal
@@ -57,7 +63,7 @@ def draw_traps(spot_man, frame, sim_man):
     for key in traps:  # Draw traps
         x, y = key
         spot = traps.get(key)
-        sim_man.trap_bead(key)
+        #sim_man.trap_bead(key)
         if spot.is_line:
             length = 60
             half_length = length / 2

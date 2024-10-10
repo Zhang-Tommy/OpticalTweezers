@@ -16,7 +16,7 @@ from utilities import *
 
 # Todo: Ensure the controller is aware of beads that other controllers are moving
 def holo(kp_child, controls_parent, target_bead, spot_man, goal, start=None, is_donut=False, is_line=False):
-    kps = kp_child.recv() # Blocking, wait until keypoints have been received
+    kps = spot_man.get_obstacles() # Blocking, wait until keypoints have been received
 
     if not is_donut and not is_line:
         # Choose first detected bead as our target bead
@@ -42,9 +42,20 @@ def holo(kp_child, controls_parent, target_bead, spot_man, goal, start=None, is_
     start_state = jnp.array([x_start, y_start])
 
     kpsarray = jnp.asarray(kps)
-    kpsarray = kpsarray[kpsarray != start_state]
 
-    env = Environment.create(int(len(kpsarray)/2), kpsarray)
+    #print(f"Before {len(kpsarray)}")
+    kpsarray = kpsarray[~jnp.all(kpsarray == start_state, axis=1)]
+
+    current_length = kpsarray.shape[0]
+    if current_length < KPS_SIZE:
+        padding_length = KPS_SIZE - current_length
+        pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
+        kpsarray = jnp.vstack([kpsarray, pad_array])
+
+    #print(kpsarray)
+    #print(f"After {len(kpsarray)}")
+    #print(f"KPS LEN CREATE: {len(kpsarray)}")
+    env = Environment.create(len(kpsarray), kpsarray)
 
     init_control = gen_initial_traj(start_state, goal_position, N).T
 
@@ -67,27 +78,40 @@ def holo(kp_child, controls_parent, target_bead, spot_man, goal, start=None, is_
             state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
 
             controls_parent.send(opt_controls)
-            if kp_child.poll():
-               # kps = spot_man.get_obstacles()
-                kps = kp_child.recv()
-                kpsarray = jnp.asarray(kps)
-                kpsarray = remove_closest_point(kpsarray, prev_state[0], prev_state[1])
+            # if kp_child.poll():
+            #    # kps = spot_man.get_obstacles()
+            #     kps = kp_child.recv()
+            #     kpsarray = jnp.asarray(kps)
+            #     kpsarray = remove_closest_point(kpsarray, prev_state[0], prev_state[1])
+            #
+            #
+            #     #  Sets a range where obtsacles are visible, reduce to local knowledge of enivornment
+            #     # nearest_kps = []
+            #     # for i, kp in enumerate(kpsarray):
+            #     #     if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
+            #     #         nearest_kps.append(kp)
+            #     #
+            #     # if len(nearest_kps) < 50:
+            #     #     nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
+            #     #
+            #     # nearest_kps = jnp.asarray(nearest_kps)
+            #     env = env.update(kpsarray, len(kpsarray))
 
+            kpsarray = jnp.asarray(spot_man.get_obstacles())
 
-                #  Sets a range where obtsacles are visible, reduce to local knowledge of enivornment
-                nearest_kps = []
-                for i, kp in enumerate(kpsarray):
-                    if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
-                        nearest_kps.append(kp)
+            kpsarray = kpsarray[~jnp.all(kpsarray == np.array([int(control[0]), int(control[1])]), axis=1)]
 
-                if len(nearest_kps) < 50:
-                    nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
+            current_length = kpsarray.shape[0]
+            if current_length < KPS_SIZE:
+                padding_length = KPS_SIZE - current_length
+                pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
+                kpsarray = jnp.vstack([kpsarray, pad_array])
 
-                nearest_kps = jnp.asarray(nearest_kps)
-                env = env.update(nearest_kps, len(nearest_kps))
+            env = env.update(kpsarray, len(kpsarray))
+            #print(f"KPS LEN UPDATE: {len(kpsarray)}")
 
             dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
-            if dist_to_goal < 5:
+            if dist_to_goal < 2:
                 print("Goal reached!")
                 break
 
@@ -103,7 +127,7 @@ def holo(kp_child, controls_parent, target_bead, spot_man, goal, start=None, is_
 def simulator(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent, kp_child, controls_parent):
     """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
-    number_of_beads = 50
+    number_of_beads = 25
     dt = 0.0015
     dragging_trap_idx = [None]
 
@@ -155,33 +179,33 @@ def simulator(kp_parent, controls_child, spot_man, lock, spot_lock, trap_parent,
             frame = white_bg.copy()
             sim_man.brownian_move(dt, dynamics)
 
-            frame = draw_traps(spot_man, frame, sim_man)
+            frame = draw_traps(spot_man, frame, sim_man, donut_goal, line_goal)
 
             # Handle controls and draw old/new controls
             if controls_child.poll():
                 opt_controls = controls_child.recv().reshape(-1, 2)
                 for g, cont in enumerate(opt_controls):
-                    if g % 25 == 0:
-                        cv2.circle(frame, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
+                    #if g % 25 == 0:
+                    #    cv2.circle(frame, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
+                    pass
 
             # Detect and draw beads using keypoints
             key_points = camera.detect_beads(frame, is_simulator=True)
             cv2.drawKeypoints(frame, key_points, frame, (255, 0, 0))
 
-            kp_set = {tuple(map(int, kp.pt)) for kp in key_points}
-
+            #for obs in spot_man.get_trapped_beads().keys():
+            #    points.append(obs)
             #if len(kp_set) < number_of_beads:
-
-            spot_man.set_obstacles(kp_set)
 
             # Send keypoints asynchronously
             points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
             # Todo: this will probably not work in experiments since beads can freely diffuse into the workspace
-            if len(points) < number_of_beads:  # pad the keypoints with zeros to keep consistent length
-                points.extend([[0.0, 0.0]] * (number_of_beads - len(points)))
+            #if len(points) < 150:  # pad the keypoints with zeros to keep consistent length
+            #    points.extend([[0.0, 0.0]] * (150 - len(points)))
 
+            spot_man.set_obstacles(points)
             # Send keypoints
-            executor.submit(kp_parent.send, points)
+            #executor.submit(kp_parent.send, points)
 
             cv2.imshow("Optical Tweezers Simulator", frame)
 
@@ -218,6 +242,16 @@ def mouse_callback(event, x, y, flags, param):
 
         traps.append((x,y))
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
+        if np.linalg.norm(np.array([x, y]) - np.array(line_goal)) < 15:
+            line_goal.clear()
+            #spot_man.remove_trap((trap[0], trap[1]))
+            #traps.pop(j)
+            return
+        if np.linalg.norm(np.array([x, y]) - np.array(donut_goal)) < 15:
+            donut_goal.clear()
+            #spot_man.remove_trap((trap[0], trap[1]))
+            #traps.pop(j)
+            return
         for j, trap in enumerate(traps):
             if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
                 spot_man.remove_trap((trap[0], trap[1]))

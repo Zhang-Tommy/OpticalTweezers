@@ -13,13 +13,17 @@ class SpotManager:
         self.num_spots = 0  # Number of active traps
         self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
         self.goal_positions = {}  # holds the user input goal positions
-        self.obstacles = set()  # keys are (x,y) pos of obstacles, value is keypoint object
+        self.obstacles = []  # keys are (x,y) pos of obstacles, value is keypoint object
 
     def set_obstacles(self, new_obstacles):
         self.obstacles = new_obstacles
 
     def get_obstacles(self):
-        return self.obstacles
+        obstacles_with_traps = self.obstacles
+        #print(list(self.trapped_beads.keys()))
+        for pos in self.trapped_beads.keys():
+            obstacles_with_traps.append(pos)
+        return obstacles_with_traps
 
     def get_trapped_beads(self):
         """

@@ -31,11 +31,17 @@ N = 125
 # 50
 
 """ Bead radius in pixels"""
-BEAD_RADIUS = 20
+BEAD_RADIUS = 13
 
 """ Default line trap length"""
 LINE_TRAP_LENGTH = 8
 LINE_TRAP_ANGLE = 0
 
 """ Annular trap vortex charge/twist """
-ANNULAR_TRAP_VORTEX_CHARGE = 12
+ANNULAR_TRAP_VORTEX_CHARGE = 12  #
+
+""" Obstacle separation boundary"""
+OBSTACLE_SEPARATION = 25
+
+""" Constant keypoints array size (so jax doesn't recompile and make it slow)"""
+KPS_SIZE = 150
