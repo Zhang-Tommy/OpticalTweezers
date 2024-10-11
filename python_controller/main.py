@@ -57,60 +57,86 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
     state = start_state
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
 
+    if is_donut:
+        setattr(RunningCost, 'obstacle_separation', 1.4 * OBSTACLE_SEPARATION)
+    elif is_line:
+        setattr(RunningCost, 'obstacle_separation', 1.6 * OBSTACLE_SEPARATION)
+    else:
+        setattr(RunningCost, 'obstacle_separation', OBSTACLE_SEPARATION)
+
     while True:
+        st = time.time()
+        empty_env = Environment.create(0, jnp.array([]))
+
+
+        solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env,False, N)
+        states, opt_controls = solution["optimal_trajectory"]
+        control = opt_controls[0]
         try:
-            st = time.time()
-            empty_env = Environment.create(0, jnp.array([]))
-            solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N)
-            states, opt_controls = solution["optimal_trajectory"]
-            control = opt_controls[0]
-            try:
-                spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
-            except:
-                print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
+            spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
+        except:
+            print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
+        init_control = opt_controls
+        prev_state = state
+        state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
 
-            prev_state = state
-            state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
+        controls_parent.send(opt_controls)
+        #  Sets a range where obtsacles are visible, reduce to local knowledge of enivornment
+        # nearest_kps = []
+        # for i, kp in enumerate(kpsarray):
+        #     if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
+        #         nearest_kps.append(kp)
+        #
+        # if len(nearest_kps) < 50:
+        #     nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
 
-            controls_parent.send(opt_controls)
-            #  Sets a range where obtsacles are visible, reduce to local knowledge of enivornment
-            # nearest_kps = []
-            # for i, kp in enumerate(kpsarray):
-            #     if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
-            #         nearest_kps.append(kp)
-            #
-            # if len(nearest_kps) < 50:
-            #     nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
-            #
-            # nearest_kps = jnp.asarray(nearest_kps)
-            #env = env.update(kpsarray, len(kpsarray))
+        #nearest_kps = jnp.asarray(nearest_kps)
+        #env = env.update(kpsarray, len(kpsarray))
 
-            kpsarray = jnp.asarray(spot_man.get_obstacles())
+        kpsarray = jnp.asarray(spot_man.get_obstacles())
 
-            kpsarray = kpsarray[~jnp.all(kpsarray == np.array([int(control[0]), int(control[1])]), axis=1)]
+        kpsarray = kpsarray[~jnp.all(kpsarray == np.array([int(control[0]), int(control[1])]), axis=1)]
+        nearest_kps = []
+        for kp in kpsarray:
+            if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
+                nearest_kps.append(kp)
 
-            current_length = kpsarray.shape[0]
-            if current_length < KPS_SIZE:
-                padding_length = KPS_SIZE - current_length
-                pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
-                kpsarray = jnp.vstack([kpsarray, pad_array])
 
-            env = env.update(kpsarray, len(kpsarray))
-            #print(f"KPS LEN UPDATE: {len(kpsarray)}")
+        kpsarray = jnp.asarray(nearest_kps)
+        # nearest_kps = []
+        # for i, kp in enumerate(kpsarray):
+        #     if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
+        #         nearest_kps.append(kp)
+        #
+        # #if len(nearest_kps) < 50:
+        # #    nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
+        #
+        # kpsarray = jnp.asarray(nearest_kps)
 
-            dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
-            if dist_to_goal < 2:
-                print("Goal reached!")
-                break
+        current_length = kpsarray.shape[0]
+        if current_length == 0:
+            print("AHA")
+        if current_length < KPS_SIZE:
+            padding_length = KPS_SIZE - current_length
+            pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
+            kpsarray = jnp.vstack([kpsarray, pad_array])
 
-            if keyboard.is_pressed('q'):
-                break
-            et = time.time()
+        env = env.update(kpsarray, len(kpsarray))
+        #print(f"KPS LEN UPDATE: {len(kpsarray)}")
 
-            # rudimentary timing controller
-            if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
-                time.sleep(0.05 - (et - st))
-        except Exception as e: print(e)
+        dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
+        if dist_to_goal < 2:
+            print("Goal reached!")
+            break
+
+        if keyboard.is_pressed('q'):
+            break
+        et = time.time()
+
+        # rudimentary timing controller
+        if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
+            time.sleep(0.05 - (et - st))
+
 
 def simulator(spot_man, controls_child, controls_parent):
     """ Controls the simulator visualization with random bead distribution """

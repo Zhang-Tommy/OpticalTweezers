@@ -173,7 +173,7 @@ class RK4Integrator(NamedTuple):
 
 @jax.jit
 # Run every single MPC loop (Every time we plan over the horizon)
-def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=1, atol=10):
+def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=MAX_ILQR_ITERATIONS, atol=1e-2):
     st=time.time()
     running_cost, terminal_cost = total_cost
     n, (N, m) = x0.shape[-1], u_guess.shape  # Initial state and control inputs
@@ -375,30 +375,37 @@ class Environment(NamedTuple):
 class RunningCost(NamedTuple):
     env: Environment
     dt: jnp.array
-
+    obstacle_separation = 26
     def __call__(self, state, control, step):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
         asteroids = self.env.asteroids
-
+        separation = RunningCost.obstacle_separation
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
         separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
-        total_separation = 3e-4 * jnp.sum(separation_distance)**2
-        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 25, 0, 1e3 * (25 - separation_distance) ** 2))
+        #total_separation = 1e-5 * jnp.sum(separation_distance)**2
+        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
+
+        soft_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 2 * separation, 0,1e2))
+
         #collision_penalty = jnp.sum(
         #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
         x_dist = 1e3 * (state[0] - u_x) ** 2 #1e3
         y_dist = 1e3 * (state[1] - u_y) ** 2
 
-        min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e3, 0)
+        max_move_x = jnp.maximum(jnp.abs(state[0] - u_x) - 2, 0)**2
+        max_move_y = jnp.maximum(jnp.abs(state[1] - u_y) - 2, 0)**2
+
+        max_move = (max_move_x + max_move_y)*1e3
+        #min_move = jnp.linalg.norm(state - jnp.array(control))
 
         # how to allow for backtracking? balance cost of getting near object/ramming through it with cost of taking a longer route
         #minimize sum of distances away from beads
-
+        #jax.debug.print(f"{step.val}")
         #
-        return collision_avoidance_penalty + x_dist + y_dist #- total_separation
+        return collision_avoidance_penalty + x_dist + y_dist + max_move
 
 
 class MPCTerminalCost(NamedTuple):
@@ -412,8 +419,8 @@ class MPCTerminalCost(NamedTuple):
     def __call__(self, state):
         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
         #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
-        #goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
-        goal_penalty = distance_to_goal ** 2
+        goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
+        #goal_penalty = distance_to_goal ** 2
         return 1e3 * goal_penalty
         #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
