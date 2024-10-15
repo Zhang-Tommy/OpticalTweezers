@@ -48,3 +48,5 @@ class Spot:
     def set_donut_params(self, l=ANNULAR_TRAP_VORTEX_CHARGE):
         self.spot_vec[3] = l
         self.is_donut = True
+        self.spot_vec[2] = Z_OFFSET + DONUT_Z_OFFSET
+        self.spot_vec[4] = 0.2

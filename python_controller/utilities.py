@@ -4,6 +4,7 @@ import subprocess
 import time
 import numpy as np
 import cv2
+import math
 
 from harvesters.core import Harvester
 from constants import *
@@ -132,7 +133,7 @@ def draw_traps(spot_man, frame, sim_man, donut_goal, line_goal):
         if spot.is_line:
             length = 60
             half_length = length / 2
-            angle = spot.angle
+            angle = spot.angle + (math.pi / 2)
 
             x_start = int(x - half_length * np.cos(angle))
             y_start = int(y - half_length * np.sin(angle))

@@ -37,9 +37,15 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
     start_state = jnp.array([x_start, y_start])
 
     kpsarray = jnp.asarray(kps)
-
-    #print(f"Before {len(kpsarray)}")
     kpsarray = kpsarray[~jnp.all(kpsarray == start_state, axis=1)]
+    nearest_kps = []
+    for kp in kpsarray:
+        dist = np.linalg.norm(np.array([start_state[0], start_state[1]]) - np.array(kp))
+        if dist > 20:
+            if dist < 250:
+                nearest_kps.append(kp)
+    #print(f"Before {len(kpsarray)}")
+    kpsarray = jnp.asarray(nearest_kps)
 
     current_length = kpsarray.shape[0]
     if current_length < KPS_SIZE:
@@ -98,8 +104,10 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         kpsarray = kpsarray[~jnp.all(kpsarray == np.array([int(control[0]), int(control[1])]), axis=1)]
         nearest_kps = []
         for kp in kpsarray:
-            if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
-                nearest_kps.append(kp)
+            dist = np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp))
+            if dist > 20:
+                if dist < 250:
+                    nearest_kps.append(kp)
 
 
         kpsarray = jnp.asarray(nearest_kps)
@@ -246,10 +254,9 @@ def cam(spot_man, controls_child, controls_parent):
         if ctrl_zero:
             # for each goal position, find a obstacle bead and create controller process
             for i, goal in enumerate(spot_man.get_goal_pos().keys()):
-                if i < len(spot_man.get_trapped_beads().keys()):
-                    p = Process(target=holo,
-                                args=(controls_parent, i, spot_man, goal))
-                    p.start()
+                p = Process(target=holo,
+                            args=(controls_parent, i, spot_man, goal))
+                p.start()
             cv2.setTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator', 0)
         elif ctrl_one:
             p0 = Process(target=holo,
@@ -266,7 +273,7 @@ def cam(spot_man, controls_child, controls_parent):
         if controls_child.poll():
             opt_controls = controls_child.recv().reshape(-1, 2)
             for g, cont in enumerate(opt_controls):
-                if g % 5 == 0:
+                if g % 25 == 0:
                     cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
 
         cv2.drawKeypoints(img, key_points, img, (255, 0, 0))

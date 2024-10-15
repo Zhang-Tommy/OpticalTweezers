@@ -14,7 +14,7 @@ CAM_TO_UM = 0.1875
 """ Calibration factors for optical misalignment"""
 ANGLE = -3 * (math.pi/180)
 Z_OFFSET = -8.0
-SCALE_X = 1.07
+SCALE_X = 1.10
 SCALE_Y = 1.10
 
 """ Path to GIGE camera configuration file"""
@@ -27,23 +27,25 @@ MAX_NUM_TRAPS = 5
 DT = 1e-3
 
 """ Planning horizon steps"""
-N = 125
+N = 85
 # 50
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13
 
 """ Default line trap length"""
-LINE_TRAP_LENGTH = 8
-LINE_TRAP_ANGLE = 0
+LINE_TRAP_LENGTH = 3
+LINE_TRAP_ANGLE = math.pi / 2
 
 """ Annular trap vortex charge/twist """
-ANNULAR_TRAP_VORTEX_CHARGE = 12  #
+ANNULAR_TRAP_VORTEX_CHARGE = 9
 
 """ Obstacle separation boundary"""
 OBSTACLE_SEPARATION = 26 + 7
 
 OBSTACLE_SEPARATION_OG = 26 + 7
+
+DONUT_Z_OFFSET = 0
 
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
 KPS_SIZE = 150
