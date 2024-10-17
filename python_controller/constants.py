@@ -48,7 +48,7 @@ OBSTACLE_SEPARATION_OG = 26 + 7
 DONUT_Z_OFFSET = 0
 
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
-KPS_SIZE = 150
+KPS_SIZE = 50
 
 """ILQR Max Iteration Count"""
 MAX_ILQR_ITERATIONS = 150

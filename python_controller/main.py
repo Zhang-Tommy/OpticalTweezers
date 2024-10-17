@@ -66,9 +66,14 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
     if is_donut:
         setattr(RunningCost, 'obstacle_separation', 1.4 * OBSTACLE_SEPARATION)
     elif is_line:
-        setattr(RunningCost, 'obstacle_separation', 1.6 * OBSTACLE_SEPARATION)
+        a = 70
+        b = 6
+        setattr(RunningCost, 'obstacle_separation', 1 * OBSTACLE_SEPARATION)
+        setattr(RunningCost, 'agent_as_ellipse', True)
+        setattr(RunningCost, 'ellipse_axis', [a, b])
     else:
         setattr(RunningCost, 'obstacle_separation', OBSTACLE_SEPARATION)
+
 
     while True:
         st = time.time()
@@ -78,6 +83,9 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env,False, N)
         states, opt_controls = solution["optimal_trajectory"]
         control = opt_controls[0]
+
+        # if is_line:
+        #     print(control)
         try:
             spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
         except:
@@ -127,6 +135,8 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         if current_length < KPS_SIZE:
             padding_length = KPS_SIZE - current_length
             pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
+            #pad_array = jnp.repeat(jnp.array([[state[0], state[1]]]), padding_length, axis=0)
+            #print(pad_array)
             kpsarray = jnp.vstack([kpsarray, pad_array])
 
         env = env.update(kpsarray, len(kpsarray))
@@ -305,14 +315,16 @@ if __name__ == "__main__":
     lock = Lock()
     spot_lock = Lock()
 
-    #p2 = Process(target=simulator, args=(spot_man, controls_child, controls_parent))
-    p3 = Process(target=init_holo_engine, args=())
+    p1 = Process(target=simulator, args=(spot_man, controls_child, controls_parent))
+    p2 = Process(target=init_holo_engine, args=())
 
-    p0 = Process(target=cam, args=(spot_man, controls_child, controls_parent))
+    #p3 = Process(target=cam, args=(spot_man, controls_child, controls_parent))
 
-    p0.start()
-    p3.start()
+    p1.start()
+    p2.start()
+    #p3.start()
 
-    p0.join()
-    p3.join()
+    p1.join()
+    p2.join()
+    #p3.join()
 

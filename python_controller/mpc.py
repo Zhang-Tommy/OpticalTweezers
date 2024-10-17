@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from constants import BEAD_RADIUS
-
+from utilities import min_dist_to_ellipse
 np.seterr(invalid="ignore")
 
 import matplotlib.pyplot as plt; plt.rcParams.update({'font.size': 20})
@@ -376,6 +376,9 @@ class RunningCost(NamedTuple):
     env: Environment
     dt: jnp.array
     obstacle_separation = 26
+    agent_as_ellipse = False
+    ellipse_axis = [None, None]  # a, b
+
     def __call__(self, state, control, step):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
@@ -383,7 +386,29 @@ class RunningCost(NamedTuple):
         separation = RunningCost.obstacle_separation
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
-        separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+        if not self.agent_as_ellipse:
+            separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+            #jax.debug.print("Separation distance: {}", separation_distance)
+        else:
+            # translate all obstacles so a new origin is formed at the center of the ellipse
+            # x_bead_new = abs(x_bead - x_center)
+            # y_bead_new = abs(y_bead - y_center)
+            # Run distance calculator on all beads to the ellipse
+            # separation_distance = array containing min distances to ellipse for each bead/obstacle
+
+            new_asteroids = jnp.abs(state - asteroids.center)
+
+            def body_fn(carry, asteroid):
+                dist = min_dist_to_ellipse(self.ellipse_axis, asteroid)
+                return carry + dist, dist
+
+            dist, what = jax.lax.scan(body_fn, 0.0, new_asteroids)
+
+            separation_distance = what - asteroids.radius
+
+            #jax.debug.print("Separation distance: {}", separation_distance)
+
+
         #total_separation = 1e-5 * jnp.sum(separation_distance)**2
         collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
 

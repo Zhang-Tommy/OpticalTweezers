@@ -5,13 +5,49 @@ import time
 import numpy as np
 import cv2
 import math
-
+import jax
+import jax.numpy as jnp
 from harvesters.core import Harvester
 from constants import *
 from multiprocessing.managers import BaseManager
 
 class SpotManagerManager(BaseManager):
     pass
+
+@jax.jit
+def min_dist_to_ellipse(axis, pt):
+    a, b = axis
+    y0, y1 = pt
+
+    # bisection bounds
+    t0 = -(b ** 2) + b * y1
+    t1 = -(b ** 2) + jnp.sqrt(((a ** 2) * (y0 ** 2)) + ((b ** 2) * (y1 ** 2)))
+
+    # solve F to get roots
+    def F(t, a, b, y0, y1):
+        term0 = ((a * y0) / (t + a ** 2)) ** 2
+        term1 = ((b * y1) / (t + b ** 2)) ** 2
+        return term0 + term1 - 1
+
+    def bisection_step(val, _):
+        t0, t1 = val
+        t_mid = (t0 + t1) / 2.0
+        f_mid = F(t_mid, a, b, y0, y1)
+
+        t0_new = jnp.where(f_mid > 0, t_mid, t0)
+        t1_new = jnp.where(f_mid <= 0, t_mid, t1)
+        return (t0_new, t1_new), None
+
+    (t0_final, t1_final), _ = jax.lax.scan(bisection_step, (t0, t1), None, length=50)
+
+    tbar = (t0_final + t1_final) / 2.0
+
+    x0 = a * a * y0 / (tbar + a * a)
+    x1 = b * b * y1 / (tbar + b * b)
+
+    dist = jnp.sqrt((x0 - y0) ** 2 + (x1 - y1) ** 2)
+
+    return dist
 
 def mouse_callback(event, x, y, flags, param):
     spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal = param
