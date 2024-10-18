@@ -24,7 +24,7 @@ def detect_beads(image, is_simulator=False):
     # Initialize blob detector
     params = cv2.SimpleBlobDetector.Params()
     params.minArea = 300
-    params.minCircularity = 0.85 #0.85 original value
+    params.minCircularity = 0.6 #0.85 original value
     params.minInertiaRatio = 0.01
     params.minConvexity = 0.87
     params.filterByArea = 1

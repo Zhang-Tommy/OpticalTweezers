@@ -37,6 +37,10 @@ BEAD_RADIUS = 13
 LINE_TRAP_LENGTH = 3
 LINE_TRAP_ANGLE = math.pi / 2
 
+""" Line trap elliptical boundary """
+ELLIPSE_MINOR_AXIS = 12
+ELLIPSE_MAJOR_AXIS = 40 # pixels
+
 """ Annular trap vortex charge/twist """
 ANNULAR_TRAP_VORTEX_CHARGE = 9
 
@@ -52,3 +56,4 @@ KPS_SIZE = 50
 
 """ILQR Max Iteration Count"""
 MAX_ILQR_ITERATIONS = 150
+

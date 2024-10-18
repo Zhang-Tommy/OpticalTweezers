@@ -14,6 +14,45 @@ from multiprocessing.managers import BaseManager
 class SpotManagerManager(BaseManager):
     pass
 
+def create_artificial_obs(clustering, kps_array, frame):
+    labels = clustering.labels_
+    num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+    labelled_clusters = np.concatenate((kps_array,labels[:,np.newaxis]),axis=1)
+    artifical_pts = []
+    # for each cluster found
+    for i in range(num_clusters):
+        filter = np.asarray([i])
+        cluster_pts = labelled_clusters[np.in1d(labelled_clusters[:, -1], filter)]
+        cluster_pts = cluster_pts[:, 0:-1]
+
+        # for each point in cluster
+        # draw a line from point 0 to point 1 then point 1 to point 2...
+        start_pt = cluster_pts[0, :].astype(int)
+        for j in range(len(cluster_pts) - 1):
+            cv2.line(frame, start_pt, cluster_pts[j+1, :].astype(int), (256, 0, 256), 1)
+            line_dist = jnp.linalg.norm(start_pt - cluster_pts[j+1, :].astype(int))
+
+            if line_dist > BEAD_RADIUS:
+                n_pts = int((line_dist - BEAD_RADIUS) / (BEAD_RADIUS))
+
+            interp_pts = np.linspace(start_pt, cluster_pts[j+1, :].astype(int), num=n_pts, endpoint=False)
+            interp_pts = interp_pts[1:, :]
+            artifical_pts.extend(interp_pts.tolist())
+
+
+            #for pt in interp_pts:
+             #   cv2.circle(frame, pt.astype(int), 23, (128, 0, 0), 1)
+            #print(interp_pts)
+            start_pt = cluster_pts[j + 1, :].astype(int)
+
+
+            #print(line_dist)
+            # subtract 1 bead diameter from line_dist
+            # divide length by diameter and round up
+    #artifical_pts_array = jnp.asarray(artifical_pts)
+    return frame, artifical_pts
+
 @jax.jit
 def min_dist_to_ellipse(axis, pt):
     a, b = axis

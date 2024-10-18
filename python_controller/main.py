@@ -9,7 +9,8 @@ from simulator import white_bg
 from spot_manager import SpotManager
 from utilities import *
 from multiprocessing import Lock, Process
-
+from sklearn.cluster import DBSCAN
+from test import *
 def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=False, is_line=False):
     kps = spot_man.get_obstacles() # Blocking, wait until keypoints have been received
 
@@ -66,11 +67,9 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
     if is_donut:
         setattr(RunningCost, 'obstacle_separation', 1.4 * OBSTACLE_SEPARATION)
     elif is_line:
-        a = 70
-        b = 6
         setattr(RunningCost, 'obstacle_separation', 1 * OBSTACLE_SEPARATION)
         setattr(RunningCost, 'agent_as_ellipse', True)
-        setattr(RunningCost, 'ellipse_axis', [a, b])
+        setattr(RunningCost, 'ellipse_axis', [ELLIPSE_MAJOR_AXIS, ELLIPSE_MINOR_AXIS])
     else:
         setattr(RunningCost, 'obstacle_separation', OBSTACLE_SEPARATION)
 
@@ -222,8 +221,19 @@ def simulator(spot_man, controls_child, controls_parent):
         cv2.drawKeypoints(frame, key_points, frame, (255, 0, 0))
 
         points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
-        spot_man.set_obstacles(points)
 
+        kps_array = np.asarray(points)
+        st = time.time()
+        clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
+        frame, artifical_pts = create_artificial_obs(clustering, kps_array, frame)
+
+        #for cluster in clustering.components_:
+        #    cluster = cluster.astype(int)
+            #cv2.circle(frame, cluster, 14, (0, 256, 0), -1)
+
+        combined_pts = points + artifical_pts
+
+        spot_man.set_obstacles(combined_pts)
         cv2.imshow("Optical Tweezers Simulator", frame)
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -289,7 +299,15 @@ def cam(spot_man, controls_child, controls_parent):
         cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
         cv2.imshow('Optical Tweezers Simulator', img)
         points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
-        spot_man.set_obstacles(points)
+
+        kps_array = np.asarray(points)
+        clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
+        frame, artifical_pts = create_artificial_obs(clustering, kps_array, frame)
+
+        combined_pts = points + artifical_pts
+
+        spot_man.set_obstacles(combined_pts)
+
         cv2.waitKey(1)
         k += 1
 
