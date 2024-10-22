@@ -10,7 +10,7 @@ from spot_manager import SpotManager
 from utilities import *
 from multiprocessing import Lock, Process
 from sklearn.cluster import DBSCAN
-from test import *
+
 def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=False, is_line=False):
     kps = spot_man.get_obstacles() # Blocking, wait until keypoints have been received
 
@@ -45,7 +45,7 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         if dist > 20:
             if dist < 250:
                 nearest_kps.append(kp)
-    #print(f"Before {len(kpsarray)}")
+
     kpsarray = jnp.asarray(nearest_kps)
 
     current_length = kpsarray.shape[0]
@@ -54,9 +54,6 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
         kpsarray = jnp.vstack([kpsarray, pad_array])
 
-    #print(kpsarray)
-    #print(f"After {len(kpsarray)}")
-    #print(f"KPS LEN CREATE: {len(kpsarray)}")
     env = Environment.create(len(kpsarray), kpsarray)
 
     init_control = gen_initial_traj(start_state, goal_position, N).T
@@ -65,7 +62,7 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
 
     if is_donut:
-        setattr(RunningCost, 'obstacle_separation', 1.4 * OBSTACLE_SEPARATION)
+        setattr(RunningCost, 'obstacle_separation', 1.2 * OBSTACLE_SEPARATION)
     elif is_line:
         setattr(RunningCost, 'obstacle_separation', 1 * OBSTACLE_SEPARATION)
         setattr(RunningCost, 'agent_as_ellipse', True)
@@ -83,17 +80,15 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         states, opt_controls = solution["optimal_trajectory"]
         control = opt_controls[0]
 
-        # if is_line:
-        #     print(control)
         try:
             spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
         except:
             print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
         init_control = opt_controls
-        prev_state = state
         state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
 
         controls_parent.send(opt_controls)
+
         #  Sets a range where obtsacles are visible, reduce to local knowledge of enivornment
         # nearest_kps = []
         # for i, kp in enumerate(kpsarray):
@@ -116,17 +111,7 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
                 if dist < 250:
                     nearest_kps.append(kp)
 
-
         kpsarray = jnp.asarray(nearest_kps)
-        # nearest_kps = []
-        # for i, kp in enumerate(kpsarray):
-        #     if np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp)) < 100:
-        #         nearest_kps.append(kp)
-        #
-        # #if len(nearest_kps) < 50:
-        # #    nearest_kps.extend([[0.0, 0.0]] * (50 - len(nearest_kps)))
-        #
-        # kpsarray = jnp.asarray(nearest_kps)
 
         current_length = kpsarray.shape[0]
         if current_length == 0:
@@ -139,7 +124,6 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
             kpsarray = jnp.vstack([kpsarray, pad_array])
 
         env = env.update(kpsarray, len(kpsarray))
-        #print(f"KPS LEN UPDATE: {len(kpsarray)}")
 
         dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
         if dist_to_goal < 2:
@@ -154,11 +138,10 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
             time.sleep(0.05 - (et - st))
 
-
 def simulator(spot_man, controls_child, controls_parent):
     """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
-    number_of_beads = 25
+    number_of_beads = 30
     dt = 0.0015
     dragging_trap_idx = [None]
 
@@ -212,25 +195,23 @@ def simulator(spot_man, controls_child, controls_parent):
         if controls_child.poll():
             opt_controls = controls_child.recv().reshape(-1, 2)
             for g, cont in enumerate(opt_controls):
-                if g % 5 == 0:
+                if g % 5 == 0 and DEBUG:
                     cv2.circle(frame, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
-                pass
+
 
         # Detect and draw beads using keypoints
         key_points = camera.detect_beads(frame, is_simulator=True)
-        cv2.drawKeypoints(frame, key_points, frame, (255, 0, 0))
+        if DEBUG:
+            cv2.drawKeypoints(frame, key_points, frame, (255, 0, 0))
 
         points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
 
         kps_array = np.asarray(points)
-        st = time.time()
+
         clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
         frame, artifical_pts = create_artificial_obs(clustering, kps_array, frame)
-
-        #for cluster in clustering.components_:
-        #    cluster = cluster.astype(int)
-            #cv2.circle(frame, cluster, 14, (0, 256, 0), -1)
-
+        #cv2.rectangle(frame, (160,160), (480,320), (128, 0, 0), 1)
+        #cv2.line(frame, (160, 0), (160, 480), (128, 0, 0), 1)
         combined_pts = points + artifical_pts
 
         spot_man.set_obstacles(combined_pts)
@@ -269,6 +250,7 @@ def cam(spot_man, controls_child, controls_parent):
         key_points = camera.detect_beads(img)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
+        ### clear_region()
         ctrl_zero = cv2.getTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator')
         ctrl_one = cv2.getTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator')
         if ctrl_zero:
@@ -293,10 +275,11 @@ def cam(spot_man, controls_child, controls_parent):
         if controls_child.poll():
             opt_controls = controls_child.recv().reshape(-1, 2)
             for g, cont in enumerate(opt_controls):
-                if g % 25 == 0:
+                if g % 25 == 0 and DEBUG:
                     cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
 
-        cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
+        if DEBUG:
+            cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
         cv2.imshow('Optical Tweezers Simulator', img)
         points = [[kp.pt[0], kp.pt[1]] for kp in key_points]
 

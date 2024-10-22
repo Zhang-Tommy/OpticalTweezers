@@ -14,6 +14,7 @@ class Spot:
         self.is_obstacle = False
         self.is_line = False
         self.is_donut = False
+        self.is_virtual = False
         self.angle = 0
         self.is_goal = False
 

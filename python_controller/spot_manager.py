@@ -10,10 +10,12 @@ class SpotManager:
         # Holds spots in a 2d grid w/dimensions of camera
         self.grid = [[Spot() for _ in range(CAM_Y)] for _ in range(CAM_X)]
         self.trapped_beads = {}  # Holds x,y position (cam_coords) of trapped beads
+        self.virtual_traps = {}  # Holds positions of virtual traps (used to control laser power)
         self.num_spots = 0  # Number of active traps
         self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
         self.goal_positions = {}  # holds the user input goal positions
         self.obstacles = []  # keys are (x,y) pos of obstacles, value is keypoint object
+        self.virtual_x_pos = np.arange(20)
 
     def set_obstacles(self, new_obstacles):
         self.obstacles = new_obstacles
@@ -30,6 +32,9 @@ class SpotManager:
         Returns dictionary of trapped beads {(x,y): SpotObject}
         """
         return self.trapped_beads
+
+    def get_virtual_traps(self):
+        return self.virtual_traps
 
     def get_goal_pos(self):
         return self.goal_positions
@@ -55,6 +60,13 @@ class SpotManager:
                 for i in range(16):
                     spot_vals[count] = bead_params[i]
                     count += 1
+
+            for bead in self.virtual_traps:
+                bead_params = self.grid[bead[0]][bead[1]].get_spot_params()
+                for i in range(16):
+                    spot_vals[count] = bead_params[i]
+                    count += 1
+
             self.spots_vec = spot_vals
         else:
             self.spots_vec = np.zeros(3200)
@@ -94,13 +106,16 @@ class SpotManager:
         packet = start + string + end
         send_data(packet)
 
-    def add_spot(self, pos, is_line=False, is_donut=False):
+    def add_spot(self, pos, is_line=False, is_donut=False, is_virtual=False):
         new_pos_scaled = self.offset_misalignment(pos)
 
         if self.check_bounds(pos):
             new_spot = Spot()
             new_spot.change_pos(cam_to_um(new_pos_scaled))
-            self.trapped_beads[pos] = new_spot
+            if is_virtual:
+                self.virtual_traps[pos] = new_spot
+            else:
+                self.trapped_beads[pos] = new_spot
             self.num_spots += 1
             if is_line:
                 new_spot.set_line_params()
@@ -110,6 +125,8 @@ class SpotManager:
             if not self.grid[pos[0]][pos[1]].active:
                 self.grid[pos[0]][pos[1]] = new_spot
                 self.grid[pos[0]][pos[1]].active = True
+                if not is_virtual:
+                    self.update_virtual_traps()
                 self.update_traps()
             else:
                 print(f'Trap already exists at {pos[0]}, {pos[1]}')
@@ -137,12 +154,16 @@ class SpotManager:
         # Send to hologram engine
         self.update_traps()
 
-    def remove_trap(self, pos):
+    def remove_trap(self, pos, is_virtual=False):
         new_spot = Spot()
         new_spot.spot_vec = np.zeros(16)
-        self.trapped_beads.pop(pos)
+        if not is_virtual:
+            self.update_virtual_traps()
+            self.trapped_beads.pop(pos)
+
         self.grid[pos[0]][pos[1]] = new_spot
         self.num_spots -= 1
+
         self.update_traps()
 
     def offset_misalignment(self, pos):
@@ -155,3 +176,27 @@ class SpotManager:
 
         return offset_y, offset_x
 
+    def update_virtual_traps(self):
+        """
+        Ensures traps have a similar amount of power
+        """
+        num_trapped_beads = len(self.trapped_beads)
+        if num_trapped_beads == 0:
+            return
+        num_virtual_traps = len(self.virtual_traps)
+
+        total_power = num_virtual_traps * AVG_DESIRED_LASER_PWR + num_trapped_beads * AVG_DESIRED_LASER_PWR
+        #print(f"Total Power: {total_power}, Num_Virtual_Traps={num_virtual_traps}, Num_Trapped_beads={num_trapped_beads}")
+        if total_power > TOTAL_LASER_PWR:
+            num_virtual_remove = int((total_power - TOTAL_LASER_PWR) / AVG_DESIRED_LASER_PWR)
+            if num_virtual_traps == 0:
+                print("Warning: Cannot remove more virtual traps - trap power will be limited")
+            else:
+                for i in range(num_virtual_remove):
+                    virtual_trap = self.virtual_traps.popitem()  # remove virtual trap
+                    self.remove_trap(virtual_trap[0], is_virtual=True)
+        elif total_power < TOTAL_LASER_PWR:
+            num_virtual_add = int((TOTAL_LASER_PWR - total_power) / AVG_DESIRED_LASER_PWR)
+            for i in range(num_virtual_add):
+                x = self.virtual_x_pos[num_virtual_traps + 1 + i]
+                self.add_spot((x, 0), is_virtual=True)

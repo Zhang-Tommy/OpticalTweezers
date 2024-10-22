@@ -25,32 +25,23 @@ def create_artificial_obs(clustering, kps_array, frame):
         filter = np.asarray([i])
         cluster_pts = labelled_clusters[np.in1d(labelled_clusters[:, -1], filter)]
         cluster_pts = cluster_pts[:, 0:-1]
-
         # for each point in cluster
         # draw a line from point 0 to point 1 then point 1 to point 2...
         start_pt = cluster_pts[0, :].astype(int)
         for j in range(len(cluster_pts) - 1):
-            cv2.line(frame, start_pt, cluster_pts[j+1, :].astype(int), (256, 0, 256), 1)
+            if DEBUG:
+                cv2.line(frame, start_pt, cluster_pts[j+1, :].astype(int), (256, 0, 256), 1)
             line_dist = jnp.linalg.norm(start_pt - cluster_pts[j+1, :].astype(int))
-
             if line_dist > BEAD_RADIUS:
                 n_pts = int((line_dist - BEAD_RADIUS) / (BEAD_RADIUS))
-
             interp_pts = np.linspace(start_pt, cluster_pts[j+1, :].astype(int), num=n_pts, endpoint=False)
             interp_pts = interp_pts[1:, :]
             artifical_pts.extend(interp_pts.tolist())
-
-
-            #for pt in interp_pts:
-             #   cv2.circle(frame, pt.astype(int), 23, (128, 0, 0), 1)
-            #print(interp_pts)
+            if DEBUG:
+                for pt in interp_pts:
+                    cv2.circle(frame, pt.astype(int), 13, (128, 0, 0), 1)
             start_pt = cluster_pts[j + 1, :].astype(int)
 
-
-            #print(line_dist)
-            # subtract 1 bead diameter from line_dist
-            # divide length by diameter and round up
-    #artifical_pts_array = jnp.asarray(artifical_pts)
     return frame, artifical_pts
 
 @jax.jit
@@ -190,6 +181,7 @@ def draw_traps(spot_man, frame, sim_man, donut_goal, line_goal):
     """
     traps = spot_man.get_trapped_beads()
     goals = spot_man.get_goal_pos()
+    #virtual_traps = spot_man.get_virtual_traps()
 
     if donut_goal:
         cv2.circle(frame, (donut_goal[0][0], donut_goal[0][1]), 4, (0, 128, 256), -1)

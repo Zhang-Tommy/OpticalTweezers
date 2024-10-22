@@ -28,7 +28,9 @@ DT = 1e-3
 
 """ Planning horizon steps"""
 N = 85
-# 50
+
+""" Debug mode"""
+DEBUG = True
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13
@@ -56,4 +58,8 @@ KPS_SIZE = 50
 
 """ILQR Max Iteration Count"""
 MAX_ILQR_ITERATIONS = 150
+
+""" Desired Average Laser Power (mW)"""
+AVG_DESIRED_LASER_PWR = 100  # Min laser output is 950mW
+TOTAL_LASER_PWR = 1000
 
