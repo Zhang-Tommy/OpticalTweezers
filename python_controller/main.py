@@ -141,7 +141,7 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
 def simulator(spot_man, controls_child, controls_parent):
     """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
-    number_of_beads = 30
+    number_of_beads = 25
     dt = 0.0015
     dragging_trap_idx = [None]
 
@@ -163,12 +163,14 @@ def simulator(spot_man, controls_child, controls_parent):
     cv2.createTrackbar('DonutTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('MoveToGoals', 'Optical Tweezers Simulator', 0, 1, nothing)
     cv2.createTrackbar('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('ClearObs', 'Optical Tweezers Simulator', 0, 1, nothing)
 
     dynamics = ContinuousTimeObstacleDynamics()
 
     while True:
         ctrl_zero = cv2.getTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator')
         ctrl_one = cv2.getTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator')
+        ctrl_two = cv2.getTrackbarPos('ClearObs', 'Optical Tweezers Simulator')
         if ctrl_zero:
             # for each goal position, find a obstacle bead and create controller process
             for i, goal in enumerate(spot_man.get_goal_pos().keys()):
@@ -185,6 +187,13 @@ def simulator(spot_man, controls_child, controls_parent):
                         args=(controls_parent, None, spot_man, line_goal, line_start, False, True))
             p1.start()
             cv2.setTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0)
+        elif ctrl_two:
+            if not spot_man.get_clearing_region():
+                p = Process(target=clear_region,
+                            args=(controls_parent, spot_man))
+                p.start()
+                #clear_region(controls_parent, spot_man)
+            cv2.setTrackbarPos('ClearObs', 'Optical Tweezers Simulator', 0)
 
         frame = white_bg.copy()
         sim_man.brownian_move(dt, dynamics)
@@ -210,7 +219,7 @@ def simulator(spot_man, controls_child, controls_parent):
 
         clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
         frame, artifical_pts = create_artificial_obs(clustering, kps_array, frame)
-        #cv2.rectangle(frame, (160,160), (480,320), (128, 0, 0), 1)
+        cv2.rectangle(frame, (160,160), (480,320), (128, 0, 0), 1)
         #cv2.line(frame, (160, 0), (160, 480), (128, 0, 0), 1)
         combined_pts = points + artifical_pts
 
@@ -300,12 +309,131 @@ def cam(spot_man, controls_child, controls_parent):
             os.system("taskkill /f /im  hologram_engine_64.exe")
             break
 
+def clear_region(controls_parent, spot_man):
+    """
+    Using the locations of detected obstacles, actively control where obstacles are to create a clear workspace for experiments
+    """
+    # region defined by rectangle with corner pts at (160,160), (480,320)
+    obs = spot_man.get_obstacles()
+    spot_man.set_clearing_region(True)
+    x_min, x_max = 160, 480
+    y_min, y_max = 160, 320
+    obs_in_region = [(x, y) for x, y in obs if x_min <= x <= x_max and y_min <= y <= y_max]
+    # generate some random points in the upper region to place the points
+
+    goal_states = [(random.randint(160, 480), random.randint(0, 140)) for _ in
+                   range(len(obs_in_region))]
+
+    # for all obstacles in the region, spawn a controller to remove it from the region
+    processes = []
+    i = 0
+
+    print(goal_states)
+    for obs in obs_in_region:
+        start_state = np.asarray(obs)
+        goal_state = np.asarray(goal_states[i])
+        p = Process(target=ctrl,
+                     args=(controls_parent, start_state, goal_state, spot_man))
+        p.start()
+        processes.append(p)
+        i += 1
+
+    for p in processes:
+        p.join()
+
+    spot_man.set_clearing_region(False)
+
+def ctrl(controls_parent, start_state, goal_state, spot_man):
+    spot_man.add_spot((int(start_state[0]), int(start_state[1])))
+    obstacles = jnp.asarray(spot_man.get_obstacles())
+    obstacles = obstacles[~jnp.all(obstacles == start_state, axis=1)]
+    nearest_kps = []
+    for obs in obstacles:
+        dist = np.linalg.norm(np.array([start_state[0], start_state[1]]) - np.array(obs))
+        if dist > 20:
+            if dist < 250:
+                nearest_kps.append(obs)
+
+    obstacles = jnp.asarray(nearest_kps)
+
+    current_length = obstacles.shape[0]
+    if current_length < KPS_SIZE:
+        padding_length = KPS_SIZE - current_length
+        pad_array = jnp.zeros((padding_length, obstacles.shape[1]))
+        obstacles = jnp.vstack([obstacles, pad_array])
+
+    env = Environment.create(len(obstacles), obstacles)
+
+    init_control = gen_initial_traj(start_state, goal_state, 35).T
+
+    state = start_state
+    dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
+
+    setattr(RunningCost, 'obstacle_separation', OBSTACLE_SEPARATION)
+
+    while True:
+        st = time.time()
+        empty_env = Environment.create(0, jnp.array([]))
+
+        solution = policy(state, goal_state, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env,
+                          False, 35)
+        states, opt_controls = solution["optimal_trajectory"]
+        control = opt_controls[0]
+
+        #try:
+        spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
+        #except:
+            #print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
+        init_control = opt_controls
+        state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
+
+        controls_parent.send(opt_controls)
+
+        kpsarray = jnp.asarray(spot_man.get_obstacles())
+
+        kpsarray = kpsarray[~jnp.all(kpsarray == np.array([int(control[0]), int(control[1])]), axis=1)]
+        nearest_kps = []
+        for kp in kpsarray:
+            dist = np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp))
+            if dist > 20:
+                if dist < 250:
+                    nearest_kps.append(kp)
+
+        kpsarray = jnp.asarray(nearest_kps)
+
+        current_length = kpsarray.shape[0]
+        if current_length == 0:
+            print("AHA")
+        if current_length < KPS_SIZE:
+            padding_length = KPS_SIZE - current_length
+            pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
+            # pad_array = jnp.repeat(jnp.array([[state[0], state[1]]]), padding_length, axis=0)
+            # print(pad_array)
+            kpsarray = jnp.vstack([kpsarray, pad_array])
+
+        env = env.update(kpsarray, len(kpsarray))
+
+        dist_to_goal = np.sqrt((state[0] - goal_state[0]) ** 2 + (state[1] - goal_state[1]) ** 2)
+        if dist_to_goal < 2:
+            print("Goal reached!")
+            break
+
+        if keyboard.is_pressed('q'):
+            break
+        et = time.time()
+
+        # rudimentary timing controller
+        if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
+            time.sleep(0.05 - (et - st))
+
 if __name__ == "__main__":
     SpotManagerManager.register('SpotManager', SpotManager)
     SpotManagerManager.register('get_trapped_beads', SpotManager.get_trapped_beads)
     SpotManagerManager.register('add_spot', SpotManager.add_spot)
     SpotManagerManager.register('move_trap', SpotManager.move_trap)
     SpotManagerManager.register('remove_trap', SpotManager.remove_trap)
+    SpotManagerManager.register('set_clearing_region', SpotManager.set_clearing_region)
+    SpotManagerManager.register('get_clearing_region', SpotManager.get_clearing_region)
 
     manager = SpotManagerManager()
     manager.start()

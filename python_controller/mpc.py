@@ -527,7 +527,6 @@ class FullHorizonTerminalCost(NamedTuple):
     def __call__(self, state):
         return 10000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
-
 def gen_initial_traj(start_state, goal_state, N):
     xs, ys = start_state
     xg, yg = goal_state
@@ -537,7 +536,6 @@ def gen_initial_traj(start_state, goal_state, N):
 
     traj = jnp.array([x_traj.T, y_traj.T])
     return traj
-
 
 @functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N", "dynamics"])
 def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, empty_env, limited_sensing=False, N=20):

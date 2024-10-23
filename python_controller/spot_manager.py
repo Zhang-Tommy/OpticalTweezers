@@ -16,6 +16,13 @@ class SpotManager:
         self.goal_positions = {}  # holds the user input goal positions
         self.obstacles = []  # keys are (x,y) pos of obstacles, value is keypoint object
         self.virtual_x_pos = np.arange(20)
+        self.clearing_region = False
+
+    def set_clearing_region(self, bool):
+        self.clearing_region = bool
+
+    def get_clearing_region(self):
+        return self.clearing_region
 
     def set_obstacles(self, new_obstacles):
         self.obstacles = new_obstacles
