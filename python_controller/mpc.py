@@ -430,7 +430,7 @@ class RunningCost(NamedTuple):
         #minimize sum of distances away from beads
         #jax.debug.print(f"{step.val}")
         #
-        return collision_avoidance_penalty + x_dist + y_dist + max_move
+        return collision_avoidance_penalty + x_dist + y_dist# + max_move
 
 
 class MPCTerminalCost(NamedTuple):

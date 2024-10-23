@@ -30,7 +30,7 @@ DT = 1e-3
 N = 85
 
 """ Debug mode"""
-DEBUG = True
+DEBUG = False
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13
