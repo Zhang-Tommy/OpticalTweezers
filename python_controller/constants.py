@@ -19,6 +19,11 @@ SCALE_Y = 1.10
 
 """ Path to GIGE camera configuration file"""
 CTI_FILE_DIR = r'C:\Users\User\Desktop\Tommy_Tweezers_Automation\tweezers_automation\tweezers_automation_v2\bgapi2_gige.cti'
+"""Parameters when removing trapped beads from obstacles"""
+R_DONUT = 18
+R_POINT = 13
+L_WIDTH = 24
+L_LENGTH = 75
 
 """ Maximum number of traps in workspace"""
 MAX_NUM_TRAPS = 5
@@ -30,36 +35,36 @@ DT = 1e-3
 N = 85
 
 """ Debug mode"""
-DEBUG = False
+DEBUG = True
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13
 
 """ Default line trap length"""
-LINE_TRAP_LENGTH = 3
+LINE_TRAP_LENGTH = 6
 LINE_TRAP_ANGLE = math.pi / 2
 
 """ Line trap elliptical boundary """
 ELLIPSE_MINOR_AXIS = 12
-ELLIPSE_MAJOR_AXIS = 40 # pixels
+ELLIPSE_MAJOR_AXIS = 37 # pixels
 
 """ Annular trap vortex charge/twist """
-ANNULAR_TRAP_VORTEX_CHARGE = 9
+ANNULAR_TRAP_VORTEX_CHARGE = 7
 
 """ Obstacle separation boundary"""
 OBSTACLE_SEPARATION = 26 + 7
 
 OBSTACLE_SEPARATION_OG = 26 + 7
 
-DONUT_Z_OFFSET = 0
+DONUT_Z_OFFSET = -3.0
 
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
 KPS_SIZE = 50
 
 """ILQR Max Iteration Count"""
-MAX_ILQR_ITERATIONS = 150
+MAX_ILQR_ITERATIONS = 15
 
 """ Desired Average Laser Power (mW)"""
-AVG_DESIRED_LASER_PWR = 100  # Min laser output is 950mW
+AVG_DESIRED_LASER_PWR = 250  # Min laser output is 950mW
 TOTAL_LASER_PWR = 1000
 

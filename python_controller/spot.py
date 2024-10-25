@@ -42,6 +42,8 @@ class Spot:
         x_length = length * np.cos(angle)
         y_length = length * np.sin(angle)
         self.angle = angle
+        self.spot_vec[3] = 2 # vortex charge
+        self.spot_vec[4] = 14.0 # intensity
         self.spot_vec[12] = x_length
         self.spot_vec[13] = y_length
         self.is_line = True
@@ -50,4 +52,4 @@ class Spot:
         self.spot_vec[3] = l
         self.is_donut = True
         self.spot_vec[2] = Z_OFFSET + DONUT_Z_OFFSET
-        self.spot_vec[4] = 0.2
+        self.spot_vec[4] = 1.0

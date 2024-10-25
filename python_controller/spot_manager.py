@@ -145,21 +145,22 @@ class SpotManager:
         @param old_pos: current position in camera coords
         @param new_pos: desired position in camera coords
         """
-        pos = new_pos
-        new_pos_scaled = self.offset_misalignment(pos)
-        #print(new_pos_scaled)
-        # Get the target spot object
-        spot = self.grid[old_pos[0]][old_pos[1]]
-        self.grid[old_pos[0]][old_pos[1]].active = False
-        self.trapped_beads.pop(old_pos)
-        spot.change_pos(cam_to_um(new_pos_scaled))
+        if self.check_bounds(new_pos):
+            pos = new_pos
+            new_pos_scaled = self.offset_misalignment(pos)
+            #print(new_pos_scaled)
+            # Get the target spot object
+            spot = self.grid[old_pos[0]][old_pos[1]]
+            self.grid[old_pos[0]][old_pos[1]].active = False
+            self.trapped_beads.pop(old_pos)
+            spot.change_pos(cam_to_um(new_pos_scaled))
 
-        self.trapped_beads[new_pos] = spot
-        self.grid[new_pos[0]][new_pos[1]] = spot
-        self.grid[new_pos[0]][new_pos[1]].active = True
+            self.trapped_beads[new_pos] = spot
+            self.grid[new_pos[0]][new_pos[1]] = spot
+            self.grid[new_pos[0]][new_pos[1]].active = True
 
-        # Send to hologram engine
-        self.update_traps()
+            # Send to hologram engine
+            self.update_traps()
 
     def remove_trap(self, pos, is_virtual=False):
         new_spot = Spot()

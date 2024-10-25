@@ -34,13 +34,13 @@ def create_artificial_obs(clustering, kps_array, frame):
             line_dist = jnp.linalg.norm(start_pt - cluster_pts[j+1, :].astype(int))
             if line_dist > BEAD_RADIUS:
                 n_pts = int((line_dist - BEAD_RADIUS) / (BEAD_RADIUS))
-            interp_pts = np.linspace(start_pt, cluster_pts[j+1, :].astype(int), num=n_pts, endpoint=False)
-            interp_pts = interp_pts[1:, :]
-            artifical_pts.extend(interp_pts.tolist())
-            if DEBUG:
-                for pt in interp_pts:
-                    cv2.circle(frame, pt.astype(int), 13, (128, 0, 0), 1)
-            start_pt = cluster_pts[j + 1, :].astype(int)
+                interp_pts = np.linspace(start_pt, cluster_pts[j+1, :].astype(int), num=n_pts, endpoint=False)
+                interp_pts = interp_pts[1:, :]
+                artifical_pts.extend(interp_pts.tolist())
+                if DEBUG:
+                    for pt in interp_pts:
+                        cv2.circle(frame, pt.astype(int), 13, (128, 0, 0), 1)
+                start_pt = cluster_pts[j + 1, :].astype(int)
 
     return frame, artifical_pts
 
@@ -129,7 +129,6 @@ def mouse_callback(event, x, y, flags, param):
         if dragging_trap_idx[0] is not None:
             spot_man.move_trap((traps[dragging_trap_idx[0]][0], traps[dragging_trap_idx[0]][1]), (x, y))
             traps[dragging_trap_idx[0]] = (x, y)
-            #print(traps)
             return
     elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
         dragging_trap_idx[0] = None
