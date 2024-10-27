@@ -28,14 +28,14 @@ def holo(controls_parent, target_bead, spot_man, goal, start=None, is_donut=Fals
         x_start = float(start_pos[0])
         y_start = float(start_pos[1])
         goal_position = jnp.array([goal[0][0], goal[0][1]])
-        N_n = 170
+        N_n = 225
     elif is_line:
         start_pos = start[0]
         spot_man.add_spot((start_pos[0], start_pos[1]), is_line=True)
         x_start = float(start_pos[0])
         y_start = float(start_pos[1])
         goal_position = jnp.array([goal[0][0], goal[0][1]])
-        N_n = 85
+        N_n = N
 
     # Define start and goal states
     start_state = jnp.array([x_start, y_start])
@@ -207,7 +207,7 @@ def create_trackbars(params):
 def simulator(spot_man, controls_child, controls_parent):
     """ Controls the simulator visualization with random bead distribution """
     sim_man = SimManager()
-    number_of_beads = 75
+    number_of_beads = 25
     dt = 0.0015
     dragging_trap_idx = [None]
 
@@ -220,12 +220,47 @@ def simulator(spot_man, controls_child, controls_parent):
     traps, donut_start, donut_goal, line_start, line_goal = [], [], [], [], []
 
     params = [spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal]
-    create_trackbars(params)
+
+    def nothing(x):
+        pass
+
+    cv2.namedWindow("Optical Tweezers Simulator")
+    cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=params)
+    cv2.createTrackbar('LineTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('DonutTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('MoveToGoals', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('ClearObs', 'Optical Tweezers Simulator', 0, 1, nothing)
 
     dynamics = ContinuousTimeObstacleDynamics()
 
     while True:
-        slider_control((donut_start, donut_goal, line_start, line_goal, spot_man, controls_parent))
+        donut_goal, donut_start, line_goal, line_start, spot_man, controls_parent = params
+        ctrl_zero = cv2.getTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator')
+        ctrl_one = cv2.getTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator')
+        ctrl_two = cv2.getTrackbarPos('ClearObs', 'Optical Tweezers Simulator')
+        if ctrl_zero:
+            # for each goal position, find a obstacle bead and create controller process
+            for i, goal in enumerate(spot_man.get_goal_pos().keys()):
+                p = Process(target=holo,
+                            args=(controls_parent, i, spot_man, goal))
+                p.start()
+            cv2.setTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator', 0)
+        elif ctrl_one:
+            p0 = Process(target=holo,
+                         args=(controls_parent, None, spot_man, donut_goal, donut_start, True, False))
+            p0.start()
+
+            p1 = Process(target=holo,
+                         args=(controls_parent, None, spot_man, line_goal, line_start, False, True))
+            p1.start()
+            cv2.setTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0)
+        elif ctrl_two:
+            if not spot_man.get_clearing_region():
+                p = Process(target=clear_region,
+                            args=(controls_parent, spot_man))
+                p.start()
+            cv2.setTrackbarPos('ClearObs', 'Optical Tweezers Simulator', 0)
 
         frame = white_bg.copy()
         sim_man.brownian_move(dt, dynamics)
@@ -272,7 +307,17 @@ def cam(spot_man, controls_child, controls_parent):
     points.extend([[0.0, 0.0]] * 100)
 
     params = [spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal]
-    create_trackbars(params)
+
+    def nothing(x):
+        pass
+
+    cv2.namedWindow("Optical Tweezers Simulator")
+    cv2.setMouseCallback("Optical Tweezers Simulator", mouse_callback, param=params)
+    cv2.createTrackbar('LineTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('DonutTrap', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('MoveToGoals', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0, 1, nothing)
+    cv2.createTrackbar('ClearObs', 'Optical Tweezers Simulator', 0, 1, nothing)
 
     while True:
         with ia.fetch() as buffer:
@@ -283,7 +328,32 @@ def cam(spot_man, controls_child, controls_parent):
         key_points = camera.detect_beads(img)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        slider_control((donut_start, donut_goal, line_start, line_goal, spot_man, controls_parent))
+        #donut_goal, donut_start, line_goal, line_start, spot_man, controls_parent = params
+        ctrl_zero = cv2.getTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator')
+        ctrl_one = cv2.getTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator')
+        ctrl_two = cv2.getTrackbarPos('ClearObs', 'Optical Tweezers Simulator')
+        if ctrl_zero:
+            # for each goal position, find a obstacle bead and create controller process
+            for i, goal in enumerate(spot_man.get_goal_pos().keys()):
+                p = Process(target=holo,
+                            args=(controls_parent, i, spot_man, goal))
+                p.start()
+            cv2.setTrackbarPos('MoveToGoals', 'Optical Tweezers Simulator', 0)
+        elif ctrl_one:
+            p0 = Process(target=holo,
+                         args=(controls_parent, None, spot_man, donut_goal, donut_start, True, False))
+            p0.start()
+
+            p1 = Process(target=holo,
+                         args=(controls_parent, None, spot_man, line_goal, line_start, False, True))
+            p1.start()
+            cv2.setTrackbarPos('MoveDonutLineToGoal', 'Optical Tweezers Simulator', 0)
+        elif ctrl_two:
+            if not spot_man.get_clearing_region():
+                p = Process(target=clear_region,
+                            args=(controls_parent, spot_man))
+                p.start()
+            cv2.setTrackbarPos('ClearObs', 'Optical Tweezers Simulator', 0)
 
         img = draw_traps(spot_man, img, 2, donut_goal, line_goal)
 
@@ -302,7 +372,7 @@ def cam(spot_man, controls_child, controls_parent):
 
         if len(kps_array) > 2:
             clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
-            frame, artifical_pts = create_artificial_obs(clustering, kps_array, frame)
+            img, artifical_pts = create_artificial_obs(clustering, kps_array, img)
 
             combined_pts = points + artifical_pts
         else:
@@ -460,13 +530,13 @@ if __name__ == "__main__":
     p1 = Process(target=simulator, args=(spot_man, controls_child, controls_parent))
     p2 = Process(target=init_holo_engine, args=())
 
-    #p3 = Process(target=cam, args=(spot_man, controls_child, controls_parent))
+    p3 = Process(target=cam, args=(spot_man, controls_child, controls_parent))
 
-    p1.start()
+    #p1.start()
     p2.start()
-    #p3.start()
+    p3.start()
 
-    p1.join()
+    #p1.join()
     p2.join()
-    #p3.join()
+    p3.join()
 

@@ -20,10 +20,10 @@ SCALE_Y = 1.10
 """ Path to GIGE camera configuration file"""
 CTI_FILE_DIR = r'C:\Users\User\Desktop\Tommy_Tweezers_Automation\tweezers_automation\tweezers_automation_v2\bgapi2_gige.cti'
 """Parameters when removing trapped beads from obstacles"""
-R_DONUT = 18
-R_POINT = 13
-L_WIDTH = 24
-L_LENGTH = 75
+R_DONUT = 35
+R_POINT = 18
+L_WIDTH = 28
+L_LENGTH = 77
 
 """ Maximum number of traps in workspace"""
 MAX_NUM_TRAPS = 5
