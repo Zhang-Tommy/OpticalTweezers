@@ -80,14 +80,25 @@ def min_dist_to_ellipse(axis, pt):
     return dist
 
 def mouse_callback(event, x, y, flags, param):
-    spot_man, traps, dragging_trap_idx, donut_start, donut_goal, line_start, line_goal = param
+    spot_man, traps, dragging_trap_idx = param
+    trapped_beads = []
+    for pos in spot_man.get_trapped_beads().keys():
+        trapped_beads.append(pos)
+
     line_trap = cv2.getTrackbarPos('LineTrap', 'Optical Tweezers Simulator')
     donut_trap = cv2.getTrackbarPos('DonutTrap', 'Optical Tweezers Simulator')
+
+    # if line_trap and donut_trap:
+    #     cv2.setTrackbarPos('LineTrap', 'Optical Tweezers Simulator', 0)
+
+    mouse_pos = (x,y)
     if event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_ALTKEY: # donut
-        donut_goal.append((x, y))
+        #donut_goal.append((x, y))
+        spot_man.add_goal_pos(mouse_pos, is_donut=True)
         print("Donut Goal Added")
     elif event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_CTRLKEY: # line
-        line_goal.append((x, y))
+        #line_goal.append((x, y))
+        spot_man.add_goal_pos(mouse_pos, is_line=True)
         print("Line Goal Added")
     elif event == cv2.EVENT_LBUTTONDOWN:  # Left click to add or select trap
         for i, trap in enumerate(traps):
@@ -96,39 +107,60 @@ def mouse_callback(event, x, y, flags, param):
                 return
         # Add new trap if none selected
         if line_trap:
-            spot_man.add_spot((x,y), is_line=True)
-            line_start.append((x, y))
+            spot_man.add_spot(mouse_pos, is_line=True)
+            spot_man.add_start(mouse_pos, is_line=True)
         elif donut_trap:
             spot_man.add_spot((x,y), is_donut=True)
-            donut_start.append((x, y))
+            #donut_start.append((x, y))
+            spot_man.add_start(mouse_pos, is_donut=True)
         else:
             spot_man.add_spot((x,y))
+            spot_man.add_start(mouse_pos)
 
         traps.append((x,y))
     elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
-        # if np.linalg.norm(np.array([x, y]) - np.array(line_goal[0])) < 15:
-        #         #     line_goal.clear()
-        #         #     #spot_man.remove_trap((trap[0], trap[1]))
-        #         #     #traps.pop(j)
-        #         #     return
-        #         # if np.linalg.norm(np.array([x, y]) - np.array(donut_goal[0])) < 15:
-        #         #     donut_goal.clear()
-        #         #     #spot_man.remove_trap((trap[0], trap[1]))
-        #         #     #traps.pop(j)
-        #         #     return
         for j, trap in enumerate(traps):
             if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
                 spot_man.remove_trap((trap[0], trap[1]))
+                spot_man.remove_start((trap[0], trap[1]))
                 traps.pop(j)
                 return
-        for goal in spot_man.get_goal_pos().keys():
+
+        for k, trap in enumerate(trapped_beads):
+            if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
+                spot_man.remove_trap((trap[0], trap[1]))
+                #spot_man.remove_start((trap[0], trap[1]))
+                #traps.pop(k)
+                return
+        for goal in spot_man.get_goal_pos():
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
+                return
+        for goal in spot_man.get_goal_pos(is_donut=True):
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
+                return
+        for goal in spot_man.get_goal_pos(is_line=True):
             if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
                 spot_man.remove_goal_pos((goal[0], goal[1]))
                 return
     elif event == cv2.EVENT_MOUSEMOVE:  # Dragging trap around
         if dragging_trap_idx[0] is not None:
-            spot_man.move_trap((traps[dragging_trap_idx[0]][0], traps[dragging_trap_idx[0]][1]), (x, y))
-            traps[dragging_trap_idx[0]] = (x, y)
+            old_pos = traps[dragging_trap_idx[0]]
+
+            spot_man.move_trap(old_pos, mouse_pos)
+
+            traps[dragging_trap_idx[0]] = mouse_pos
+
+            if old_pos in spot_man.get_start_pos(is_line=True):
+                spot_man.remove_start(old_pos)
+                spot_man.add_start(mouse_pos, is_line=True)
+            elif old_pos in spot_man.get_start_pos(is_donut=True):
+                spot_man.remove_start(old_pos)
+                spot_man.add_start(mouse_pos, is_donut=True)
+            else:
+                spot_man.remove_start(old_pos)
+                spot_man.add_start(mouse_pos)
             return
     elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
         dragging_trap_idx[0] = None
@@ -137,7 +169,7 @@ def mouse_callback(event, x, y, flags, param):
         pass
     elif event == cv2.EVENT_MBUTTONDOWN:
         # add goal point
-        spot_man.add_goal_pos((x,y))
+        spot_man.add_goal_pos(mouse_pos)
 
 def init_holo_engine():
     """Initializes hologram engine by sending shader source code and updating uniform variables
@@ -179,14 +211,14 @@ def draw_traps(spot_man, frame, sim_man, donut_goal, line_goal):
     Draws line, donut, and point traps on the displayed image
     """
     traps = spot_man.get_trapped_beads()
-    goals = spot_man.get_goal_pos()
+    goals = spot_man.get_goal_pos() #+ spot_man.get_goal_pos(is_line=True) + spot_man.get_goal_pos(is_donut=True)
     #virtual_traps = spot_man.get_virtual_traps()
 
-    if donut_goal:
-        cv2.circle(frame, (donut_goal[0][0], donut_goal[0][1]), 4, (0, 128, 256), -1)
-        cv2.circle(frame, (donut_goal[0][0], donut_goal[0][1]), 8, (0, 128, 256), 1)
-    if line_goal:
-        cv2.circle(frame, (line_goal[0][0], line_goal[0][1]), 4, (64, 128, 0), 1)
+    for donut_goal in spot_man.get_goal_pos(is_donut=True):
+        cv2.circle(frame, (donut_goal[0], donut_goal[1]), 4, (0, 128, 256), -1)
+        cv2.circle(frame, (donut_goal[0], donut_goal[1]), 8, (0, 128, 256), 1)
+    for line_goal in spot_man.get_goal_pos(is_line=True):
+        cv2.circle(frame, (line_goal[0], line_goal[1]), 4, (64, 128, 0), 1)
 
     for goal in goals:
         x, y = goal

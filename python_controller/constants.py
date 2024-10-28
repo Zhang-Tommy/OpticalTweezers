@@ -29,13 +29,14 @@ L_LENGTH = 77
 MAX_NUM_TRAPS = 5
 
 """ RK4 Integration time step for bead dynamics"""
-DT = 1e-3
+DT = 1e-3  #1e-3
 
 """ Planning horizon steps"""
 N = 85
 
 """ Debug mode"""
 DEBUG = True
+SIMULATOR_MODE = True
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13

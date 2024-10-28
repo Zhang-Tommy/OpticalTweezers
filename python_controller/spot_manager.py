@@ -2,7 +2,7 @@ from spot import Spot
 import numpy as np
 from utilities import *
 from constants import *
-
+from collections import deque
 
 class SpotManager:
     """ Defines functions for tracking, creating, moving, and deleting traps"""
@@ -13,16 +13,30 @@ class SpotManager:
         self.virtual_traps = {}  # Holds positions of virtual traps (used to control laser power)
         self.num_spots = 0  # Number of active traps
         self.spots_vec = np.zeros(3200)  # Current trap data (sent to hologram engine)
-        self.goal_positions = {}  # holds the user input goal positions
+
+        self.point_starts = deque()
+        self.donut_starts = deque()
+        self.line_starts = deque()
+        self.point_goals = deque()
+        self.donut_goals = deque()
+        self.line_goals = deque()
+
         self.obstacles = []  # keys are (x,y) pos of obstacles, value is keypoint object
-        self.virtual_x_pos = np.arange(20)
-        self.clearing_region = False
+        self.fake_obstacles = []  # holds (x,y) pos of fake obstacles created via clustering
+        self.virtual_x_pos = np.arange(20)  # Store x positions of virtual traps
+        self.clearing_region = False  # Bool which indicates state of clear region feature
 
     def set_clearing_region(self, bool):
         self.clearing_region = bool
 
     def get_clearing_region(self):
         return self.clearing_region
+
+    def set_fake_obstacles(self, fake_obstacles):
+        self.fake_obstacles = fake_obstacles
+
+    def get_fake_obstacles(self):
+        return self.fake_obstacles
 
     def set_obstacles(self, new_obstacles):
         self.obstacles = new_obstacles
@@ -43,15 +57,70 @@ class SpotManager:
     def get_virtual_traps(self):
         return self.virtual_traps
 
-    def get_goal_pos(self):
-        return self.goal_positions
+    def add_start(self, pos, is_line=False, is_donut=False):
+        if is_line:
+            self.line_starts.append(pos)
+        elif is_donut:
+            self.donut_starts.append(pos)
+        else:
+            self.point_starts.append(pos)
 
-    def add_goal_pos(self, pos):
-        self.goal_positions[pos] = None
+    def remove_start(self, pos):
+        if pos in self.line_starts:
+            self.line_starts.remove(pos)
+        elif pos in self.donut_starts:
+            self.donut_starts.remove(pos)
+        elif pos in self.point_starts:
+            self.point_starts.remove(pos)
+
+    def get_start_pos(self, is_line=False, is_donut=False):
+        if is_line:
+            return self.line_starts
+        elif is_donut:
+            return self.donut_starts
+        else:
+            return self.point_starts
+
+    def get_goal_pos(self, is_line=False, is_donut=False):
+        if is_line:
+            return self.line_goals
+        elif is_donut:
+            return self.donut_goals
+        else:
+            return self.point_goals
+
+    def add_goal_pos(self, pos, is_line=False, is_donut=False):
+        if is_line:
+            self.line_goals.append(pos)
+        elif is_donut:
+            self.donut_goals.append(pos)
+        else:
+            self.point_goals.append(pos)
         self.grid[pos[0]][pos[1]].is_goal = True
 
+    def clear_goals(self, is_line=False, is_donut=False):
+        if is_line:
+            self.line_goals.clear()
+        elif is_donut:
+            self.donut_goals.clear()
+        else:
+            self.point_goals.clear()
+
+    def clear_starts(self, is_line=False, is_donut=False):
+        if is_line:
+            self.line_starts.clear()
+        elif is_donut:
+            self.donut_starts.clear()
+        else:
+            self.point_starts.clear()
+
     def remove_goal_pos(self, pos):
-        self.goal_positions.pop(pos)
+        if pos in self.line_goals:
+            self.line_goals.remove(pos)
+        elif pos in self.donut_goals:
+            self.donut_goals.remove(pos)
+        elif pos in self.point_goals:
+            self.point_goals.remove(pos)
         self.grid[pos[0]][pos[1]].is_goal = False
 
     def get_spots(self):

@@ -289,6 +289,35 @@ class ContinuousTimeBeadDynamics(NamedTuple):
             (-k * y + k * u_y) / b
         ])
 
+class SecondOrderContinuousTimeBeadDynamics(NamedTuple):
+    def __call__(self, state, control):
+        """
+        Full Dynamics: mẍ + ẋβ + k(x - u) = η(t) + F(t)
+        x : postion of bead
+        u : postion of trap
+
+        m = 0 : (negligible bead mass)
+        β : damping coefficient (~10e-8)
+        k : spring constant (~10e-5)
+        η(t) = 0 : thermal forces on bead (negligible)
+        F(t) = 0 : external forces on bead (negligible)
+
+        Simplified dynamics: ẋβ + k(x - u) = 0
+
+        Solve for ẋ: ẋ = k(-x + u) / β
+        """
+
+        x, y, xdot, ydot = state  # x and y positions of the bead
+        u_x, u_y = control  # x and y positions of the trap
+        b = 10e-8  # 10e-8
+        k = 10e-5  # 10e-5
+        m = 10e-15
+        #xddot = (k/m)*x - (b/m)*xdot - (k/m)*u_x
+        #yddot = (k/m)*y - (b/m)*ydot - (k/m)*u_y
+        xddot = (k / m) * x - (k / m) * u_x
+        yddot = (k / m) * y - (k / m) * u_y
+        return jnp.array([xdot, ydot, xddot, yddot])
+
 
 class ContinuousTimeObstacleDynamics(NamedTuple):
     def __call__(self, state, dt):
@@ -387,7 +416,7 @@ class RunningCost(NamedTuple):
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
         if not self.agent_as_ellipse:
-            separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+            separation_distance = jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
             #jax.debug.print("Separation distance: {}", separation_distance)
         else:
             # translate all obstacles so a new origin is formed at the center of the ellipse
@@ -396,7 +425,7 @@ class RunningCost(NamedTuple):
             # Run distance calculator on all beads to the ellipse
             # separation_distance = array containing min distances to ellipse for each bead/obstacle
 
-            new_asteroids = jnp.abs(state - asteroids.center)
+            new_asteroids = jnp.abs(state[:2] - asteroids.center)
 
             def body_fn(carry, asteroid):
                 dist = min_dist_to_ellipse(self.ellipse_axis, asteroid)
