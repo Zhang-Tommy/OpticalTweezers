@@ -206,7 +206,7 @@ def init_holo_engine():
     server_socket.close()
     return holo_process
 
-def draw_traps(spot_man, frame, sim_man, donut_goal, line_goal):
+def draw_traps(spot_man, frame):
     """
     Draws line, donut, and point traps on the displayed image
     """
