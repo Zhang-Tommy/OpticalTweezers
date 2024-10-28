@@ -379,10 +379,12 @@ class Environment(NamedTuple):
     obj_bead_radius: float
     bubble_radius: float
     bounds: jnp.array
+    time_step: int
 
     @classmethod
     def create(cls, num_beads, kpsarray, obj_bead_radius=5.0, bubble_radius=5.0, bounds=(640, 480)):
         bounds = jnp.array(bounds)
+
         #if num_beads > 0:
             #jax.debug.print(f"f{num_beads}___{len(kpsarray)}")
         return cls(
@@ -390,12 +392,11 @@ class Environment(NamedTuple):
                 jnp.reshape(kpsarray, (num_beads, 2)),  # np.random.rand(num_beads, 2) * bounds
                 BEAD_RADIUS*jnp.ones(num_beads),
                 jnp.zeros(num_beads),
-            ), obj_bead_radius, bubble_radius, bounds)
+            ), obj_bead_radius, bubble_radius, bounds, 0)
 
-    def update(self, kps, num_beads):
+    def update(self, kps, num_beads, time):
         updated_beads = self.asteroids.update(kps, num_beads)
-
-        return self._replace(asteroids=updated_beads)
+        return self._replace(asteroids=updated_beads, time_step=time)
 
     def wrap_vector(self, vector):
         return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
@@ -412,6 +413,7 @@ class RunningCost(NamedTuple):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
         asteroids = self.env.asteroids
+        time_step = self.env.time_step
         separation = RunningCost.obstacle_separation
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
@@ -439,15 +441,16 @@ class RunningCost(NamedTuple):
 
 
         #total_separation = 1e-5 * jnp.sum(separation_distance)**2
-        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
+        collision_avoidance_penalty = (1 / (1.01**time_step)) * jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
 
         soft_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 2 * separation, 0,1e2))
 
         #collision_penalty = jnp.sum(
         #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
-        x_dist = 1e3 * (state[0] - u_x) ** 2 #1e3
-        y_dist = 1e3 * (state[1] - u_y) ** 2
+        #jax.debug.print("Time Step: {}", time_step)
+        x_dist = (1e3 * (state[0] - u_x) ** 2) / (1.01**time_step) #1e3
+        y_dist = (1e3 * (state[1] - u_y) ** 2) / (1.01**time_step)
 
         max_move_x = jnp.maximum(jnp.abs(state[0] - u_x) - 2, 0)**2
         max_move_y = jnp.maximum(jnp.abs(state[1] - u_y) - 2, 0)**2
@@ -472,10 +475,11 @@ class MPCTerminalCost(NamedTuple):
 
     def __call__(self, state):
         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+        time_step = self.env.time_step
         #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
         goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
         #goal_penalty = distance_to_goal ** 2
-        return 1e3 * goal_penalty
+        return 1e3 * goal_penalty * (1.001**time_step)
         #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
 # class RunningCost(NamedTuple):

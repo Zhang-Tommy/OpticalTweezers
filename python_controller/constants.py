@@ -25,6 +25,9 @@ R_POINT = 18
 L_WIDTH = 28
 L_LENGTH = 77
 
+""" Minimum distance to goal in which controller will disregard obstacles"""
+GOAL_DIST_OBSTACLE_FREE = 50 # pixels
+
 """ Maximum number of traps in workspace"""
 MAX_NUM_TRAPS = 5
 

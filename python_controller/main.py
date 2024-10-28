@@ -21,7 +21,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         x_start = float(start_pos[0])
         y_start = float(start_pos[1])
         goal_position = jnp.array([goal[0], goal[1]])
-        N_n = 225
+        N_n = 100
         setattr(RunningCost, 'obstacle_separation', 1.2 * OBSTACLE_SEPARATION)
     elif is_line:
         start_pos = start
@@ -61,7 +61,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
 
     state = start_state
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
-
+    time_step = 0
     while True:
         st = time.time()
         empty_env = Environment.create(0, jnp.array([]))
@@ -86,14 +86,13 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         nearest_kps = []
 
         kpsarray = remove_trapped_beads(state, kpsarray, is_donut, is_line)
+        # if close to goal, remove obstacles that are close to goal as well
 
-        # for kp in kpsarray:
-        #     dist = np.linalg.norm(np.array([state[0], state[1]]) - np.array(kp))
-        #     if dist > 60:
-        #         if dist < 250:
-        #             nearest_kps.append(kp)
-        #
-        # kpsarray = jnp.asarray(nearest_kps)
+        dist_to_goal = np.sqrt((state[0] - goal_position[0]) ** 2 + (state[1] - goal_position[1]) ** 2)
+
+        if dist_to_goal < GOAL_DIST_OBSTACLE_FREE:
+            distances = np.linalg.norm(kpsarray - goal_position, axis=1)
+            kpsarray = kpsarray[distances > 200]
 
         current_length = kpsarray.shape[0]
         if current_length < KPS_SIZE:
@@ -104,9 +103,8 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
                 pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
             kpsarray = jnp.vstack([kpsarray, pad_array])
 
-        env = env.update(kpsarray, len(kpsarray))
+        env = env.update(kpsarray, len(kpsarray), time_step)
 
-        dist_to_goal = np.sqrt((state[0] - goal_position[0])**2 + (state[1] - goal_position[1])**2)
         if dist_to_goal < 2:
             print("Goal reached!")
             break
@@ -114,7 +112,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         if keyboard.is_pressed('q'):
             break
         et = time.time()
-
+        time_step += 1
         # rudimentary timing controller
         if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
             time.sleep(0.05 - (et - st))
@@ -441,7 +439,7 @@ def ctrl(controls_parent, start_state, goal_state, spot_man):
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
 
     setattr(RunningCost, 'obstacle_separation', OBSTACLE_SEPARATION)
-
+    time_step = 0
     while True:
         st = time.time()
         empty_env = Environment.create(0, jnp.array([]))
@@ -485,13 +483,13 @@ def ctrl(controls_parent, start_state, goal_state, spot_man):
             # print(pad_array)
             kpsarray = jnp.vstack([kpsarray, pad_array])
 
-        env = env.update(kpsarray, len(kpsarray))
+        env = env.update(kpsarray, len(kpsarray), time_step)
 
         dist_to_goal = np.sqrt((state[0] - goal_state[0]) ** 2 + (state[1] - goal_state[1]) ** 2)
         if dist_to_goal < 2:
             print("Goal reached!")
             break
-
+        time_step += 1
         if keyboard.is_pressed('q'):
             break
         et = time.time()
