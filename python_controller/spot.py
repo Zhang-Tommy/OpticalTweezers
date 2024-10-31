@@ -52,4 +52,6 @@ class Spot:
         self.spot_vec[3] = l
         self.is_donut = True
         self.spot_vec[2] = Z_OFFSET + DONUT_Z_OFFSET
-        self.spot_vec[4] = 1.0
+        self.spot_vec[4] = 1.5
+        #self.spot_vec[12] = 1
+        #self.spot_vec[13] = 1

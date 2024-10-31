@@ -21,7 +21,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         x_start = float(start_pos[0])
         y_start = float(start_pos[1])
         goal_position = jnp.array([goal[0], goal[1]])
-        N_n = 100
+        N_n = N #100
         setattr(RunningCost, 'obstacle_separation', 1.2 * OBSTACLE_SEPARATION)
     elif is_line:
         start_pos = start
@@ -29,7 +29,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         x_start = float(start_pos[0])
         y_start = float(start_pos[1])
         goal_position = jnp.array([goal[0], goal[1]])
-        N_n = N
+        N_n = N # 140
         setattr(RunningCost, 'obstacle_separation', 1 * OBSTACLE_SEPARATION)
         setattr(RunningCost, 'agent_as_ellipse', True)
         setattr(RunningCost, 'ellipse_axis', [ELLIPSE_MAJOR_AXIS, ELLIPSE_MINOR_AXIS])
@@ -38,7 +38,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         x_start = float(start[0])
         y_start = float(start[1])
         # Trap the target bead
-        spot_man.add_spot((int(x_start), int(y_start)))
+        #spot_man.add_spot((int(x_start), int(y_start)))
         goal_position = jnp.array([goal[0], goal[1]])
         N_n = N
         setattr(RunningCost, 'obstacle_separation', OBSTACLE_SEPARATION)
@@ -66,12 +66,20 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         st = time.time()
         empty_env = Environment.create(0, jnp.array([]))
 
-        solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env,False, N_n)
-        states, opt_controls = solution["optimal_trajectory"]
-        control = opt_controls[0]
+        if time_step % 5 == 0:
+            solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N_n)
+            states, opt_controls = solution["optimal_trajectory"]
+
+        if time_step % 5 == 0:
+            ctrl_idx = 0
+        else:
+            ctrl_idx += 1
+
+        control = opt_controls[ctrl_idx]
 
         try:
             spot_man.move_trap((int(state[0]), int(state[1])), (int(control[0]), int(control[1])))
+            #print(f"{state} -> {control}")
         except:
             print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
             return
@@ -90,18 +98,19 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
 
         dist_to_goal = np.sqrt((state[0] - goal_position[0]) ** 2 + (state[1] - goal_position[1]) ** 2)
 
-        if dist_to_goal < GOAL_DIST_OBSTACLE_FREE:
+        if dist_to_goal < GOAL_DIST_OBSTACLE_FREE and kpsarray.size != 0:
             distances = np.linalg.norm(kpsarray - goal_position, axis=1)
-            kpsarray = kpsarray[distances > 200]
+            kpsarray = kpsarray[distances > 75]
 
         current_length = kpsarray.shape[0]
         if current_length < KPS_SIZE:
             padding_length = KPS_SIZE - current_length
             if kpsarray.size == 0:
-                pad_array = jnp.zeros((padding_length, 2))
+                kpsarray = jnp.zeros((padding_length, 2))
+
             else:
                 pad_array = jnp.zeros((padding_length, kpsarray.shape[1]))
-            kpsarray = jnp.vstack([kpsarray, pad_array])
+                kpsarray = jnp.vstack([kpsarray, pad_array])
 
         env = env.update(kpsarray, len(kpsarray), time_step)
 
@@ -191,10 +200,11 @@ def simulator(spot_man, controls_child, controls_parent):
             point_starts = spot_man.get_start_pos()
             point_goals = spot_man.get_goal_pos()
             for start_pos in point_starts:
-                goal_pos = point_goals.popleft()
-                p = Process(target=holo,
-                            args=(controls_parent, spot_man, goal_pos, start_pos))
-                p.start()
+                if len(point_goals) != 0:
+                    goal_pos = point_goals.popleft()
+                    p = Process(target=holo,
+                                args=(controls_parent, spot_man, goal_pos, start_pos))
+                    p.start()
             #spot_man.clear_goals()
             spot_man.clear_starts()
             cv2.setTrackbarPos('PointGoal', 'Optical Tweezers Simulator', 0)
@@ -307,10 +317,11 @@ def cam(spot_man, controls_child, controls_parent):
             point_starts = spot_man.get_start_pos()
             point_goals = spot_man.get_goal_pos()
             for start_pos in point_starts:
-                goal_pos = point_goals.popleft()
-                p = Process(target=holo,
-                            args=(controls_parent, spot_man, goal_pos, start_pos))
-                p.start()
+                if len(point_goals) != 0:
+                    goal_pos = point_goals.popleft()
+                    p = Process(target=holo,
+                                args=(controls_parent, spot_man, goal_pos, start_pos))
+                    p.start()
             #spot_man.clear_goals()
             spot_man.clear_starts()
             cv2.setTrackbarPos('PointGoal', 'Optical Tweezers Simulator', 0)
@@ -348,9 +359,9 @@ def cam(spot_man, controls_child, controls_parent):
 
         if controls_child.poll():
             opt_controls = controls_child.recv().reshape(-1, 2)
-            for g, cont in enumerate(opt_controls):
-                if g % 25 == 0 and DEBUG:
-                    cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
+            # for g, cont in enumerate(opt_controls):
+            #     if g % 1 == 0 and DEBUG:
+            #         cv2.circle(img, (int(cont[0]), int(cont[1])), 2, (128, 0, 0), -1)
 
         if DEBUG:
             cv2.drawKeypoints(img, key_points, img, (255, 0, 0))
@@ -359,13 +370,13 @@ def cam(spot_man, controls_child, controls_parent):
 
         kps_array = np.asarray(points)
 
-        if len(kps_array) > 2:
-            clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
-            img, artifical_pts = create_artificial_obs(clustering, kps_array, img)
-
-            combined_pts = points + artifical_pts
-        else:
-            combined_pts = points
+        # if len(kps_array) > 2:
+        #     clustering = DBSCAN(eps=60, min_samples=2).fit(kps_array)
+        #     img, artifical_pts = create_artificial_obs(clustering, kps_array, img)
+        #
+        #     combined_pts = points + artifical_pts
+        # else:
+        combined_pts = points
 
         spot_man.set_obstacles(combined_pts)
 

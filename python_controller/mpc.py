@@ -441,7 +441,7 @@ class RunningCost(NamedTuple):
 
 
         #total_separation = 1e-5 * jnp.sum(separation_distance)**2
-        collision_avoidance_penalty = (1 / (1.01**time_step)) * jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
+        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
 
         soft_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 2 * separation, 0,1e2))
 
@@ -449,8 +449,8 @@ class RunningCost(NamedTuple):
         #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
         #jax.debug.print("Time Step: {}", time_step)
-        x_dist = (1e3 * (state[0] - u_x) ** 2) / (1.01**time_step) #1e3
-        y_dist = (1e3 * (state[1] - u_y) ** 2) / (1.01**time_step)
+        x_dist = (1e3 * (state[0] - u_x) ** 2)  #1e3
+        y_dist = (1e3 * (state[1] - u_y) ** 2)
 
         max_move_x = jnp.maximum(jnp.abs(state[0] - u_x) - 2, 0)**2
         max_move_y = jnp.maximum(jnp.abs(state[1] - u_y) - 2, 0)**2

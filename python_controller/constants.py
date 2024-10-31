@@ -22,11 +22,11 @@ CTI_FILE_DIR = r'C:\Users\User\Desktop\Tommy_Tweezers_Automation\tweezers_automa
 """Parameters when removing trapped beads from obstacles"""
 R_DONUT = 35
 R_POINT = 18
-L_WIDTH = 28
-L_LENGTH = 77
+L_WIDTH = 35
+L_LENGTH = 75
 
 """ Minimum distance to goal in which controller will disregard obstacles"""
-GOAL_DIST_OBSTACLE_FREE = 50 # pixels
+GOAL_DIST_OBSTACLE_FREE = 100 # pixels
 
 """ Maximum number of traps in workspace"""
 MAX_NUM_TRAPS = 5
@@ -35,22 +35,22 @@ MAX_NUM_TRAPS = 5
 DT = 1e-3  #1e-3
 
 """ Planning horizon steps"""
-N = 85
+N = 85  # 85
 
 """ Debug mode"""
 DEBUG = True
-SIMULATOR_MODE = True
+SIMULATOR_MODE = False
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13
 
 """ Default line trap length"""
-LINE_TRAP_LENGTH = 6
+LINE_TRAP_LENGTH = 3
 LINE_TRAP_ANGLE = math.pi / 2
 
 """ Line trap elliptical boundary """
 ELLIPSE_MINOR_AXIS = 12
-ELLIPSE_MAJOR_AXIS = 37 # pixels
+ELLIPSE_MAJOR_AXIS = 30 # pixels
 
 """ Annular trap vortex charge/twist """
 ANNULAR_TRAP_VORTEX_CHARGE = 7
@@ -60,7 +60,7 @@ OBSTACLE_SEPARATION = 26 + 7
 
 OBSTACLE_SEPARATION_OG = 26 + 7
 
-DONUT_Z_OFFSET = -3.0
+DONUT_Z_OFFSET = -4.0
 
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
 KPS_SIZE = 50
