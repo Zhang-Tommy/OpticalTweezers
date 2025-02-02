@@ -7,8 +7,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from python_controller.constants import BEAD_RADIUS
-
+from constants import BEAD_RADIUS
+from utilities import min_dist_to_ellipse
 np.seterr(invalid="ignore")
 
 import matplotlib.pyplot as plt; plt.rcParams.update({'font.size': 20})
@@ -17,7 +17,7 @@ import matplotlib.transforms
 from ipywidgets import interact, interactive
 import time
 from typing import Callable, NamedTuple
-
+from constants import *
 
 class LinearDynamics(NamedTuple):
     f_x: jnp.array  # A
@@ -173,7 +173,7 @@ class RK4Integrator(NamedTuple):
 
 @jax.jit
 # Run every single MPC loop (Every time we plan over the horizon)
-def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=1, atol=10):
+def iterative_linear_quadratic_regulator(dynamics, total_cost, x0, u_guess, maxiter=MAX_ILQR_ITERATIONS, atol=1e-2):
     st=time.time()
     running_cost, terminal_cost = total_cost
     n, (N, m) = x0.shape[-1], u_guess.shape  # Initial state and control inputs
@@ -289,6 +289,35 @@ class ContinuousTimeBeadDynamics(NamedTuple):
             (-k * y + k * u_y) / b
         ])
 
+class SecondOrderContinuousTimeBeadDynamics(NamedTuple):
+    def __call__(self, state, control):
+        """
+        Full Dynamics: mẍ + ẋβ + k(x - u) = η(t) + F(t)
+        x : postion of bead
+        u : postion of trap
+
+        m = 0 : (negligible bead mass)
+        β : damping coefficient (~10e-8)
+        k : spring constant (~10e-5)
+        η(t) = 0 : thermal forces on bead (negligible)
+        F(t) = 0 : external forces on bead (negligible)
+
+        Simplified dynamics: ẋβ + k(x - u) = 0
+
+        Solve for ẋ: ẋ = k(-x + u) / β
+        """
+
+        x, y, xdot, ydot = state  # x and y positions of the bead
+        u_x, u_y = control  # x and y positions of the trap
+        b = 10e-8  # 10e-8
+        k = 10e-5  # 10e-5
+        m = 10e-15
+        #xddot = (k/m)*x - (b/m)*xdot - (k/m)*u_x
+        #yddot = (k/m)*y - (b/m)*ydot - (k/m)*u_y
+        xddot = (k / m) * x - (k / m) * u_x
+        yddot = (k / m) * y - (k / m) * u_y
+        return jnp.array([xdot, ydot, xddot, yddot])
+
 
 class ContinuousTimeObstacleDynamics(NamedTuple):
     def __call__(self, state, dt):
@@ -350,22 +379,24 @@ class Environment(NamedTuple):
     obj_bead_radius: float
     bubble_radius: float
     bounds: jnp.array
+    time_step: int
 
     @classmethod
     def create(cls, num_beads, kpsarray, obj_bead_radius=5.0, bubble_radius=5.0, bounds=(640, 480)):
         bounds = jnp.array(bounds)
-        #jax.debug.print("state = {dist}", dist = kpsarray)
+
+        #if num_beads > 0:
+            #jax.debug.print(f"f{num_beads}___{len(kpsarray)}")
         return cls(
             Asteroid(
                 jnp.reshape(kpsarray, (num_beads, 2)),  # np.random.rand(num_beads, 2) * bounds
                 BEAD_RADIUS*jnp.ones(num_beads),
                 jnp.zeros(num_beads),
-            ), obj_bead_radius, bubble_radius, bounds)
+            ), obj_bead_radius, bubble_radius, bounds, 0)
 
-    def update(self, kps, num_beads):
+    def update(self, kps, num_beads, time):
         updated_beads = self.asteroids.update(kps, num_beads)
-
-        return self._replace(asteroids=updated_beads)
+        return self._replace(asteroids=updated_beads, time_step=time)
 
     def wrap_vector(self, vector):
         return (vector + self.bounds / 2) % self.bounds - self.bounds / 2
@@ -374,30 +405,64 @@ class Environment(NamedTuple):
 class RunningCost(NamedTuple):
     env: Environment
     dt: jnp.array
+    obstacle_separation = 26
+    agent_as_ellipse = False
+    ellipse_axis = [None, None]  # a, b
 
     def __call__(self, state, control, step):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
         asteroids = self.env.asteroids
-
+        time_step = self.env.time_step
+        separation = RunningCost.obstacle_separation
         #jax.debug.print("state = {dist}", dist = asteroids)
         #jax.debug.print("center = {dist}", dist = asteroids.center)
-        separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
-        total_separation = 3e-4 * jnp.sum(separation_distance)**2
-        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 25, 0, 1e3 * (25 - separation_distance) ** 2))
+        if not self.agent_as_ellipse:
+            separation_distance = jnp.linalg.norm(self.env.wrap_vector(state[:2] - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+            #jax.debug.print("Separation distance: {}", separation_distance)
+        else:
+            # translate all obstacles so a new origin is formed at the center of the ellipse
+            # x_bead_new = abs(x_bead - x_center)
+            # y_bead_new = abs(y_bead - y_center)
+            # Run distance calculator on all beads to the ellipse
+            # separation_distance = array containing min distances to ellipse for each bead/obstacle
+
+            new_asteroids = jnp.abs(state[:2] - asteroids.center)
+
+            def body_fn(carry, asteroid):
+                dist = min_dist_to_ellipse(self.ellipse_axis, asteroid)
+                return carry + dist, dist
+
+            dist, what = jax.lax.scan(body_fn, 0.0, new_asteroids)
+
+            separation_distance = what - asteroids.radius
+
+            #jax.debug.print("Separation distance: {}", separation_distance)
+
+
+        #total_separation = 1e-5 * jnp.sum(separation_distance)**2
+        collision_avoidance_penalty = jnp.sum(jnp.where(separation_distance > separation, 0, 1e2 * (self.obstacle_separation - separation_distance) ** 2))
+
+        soft_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 2 * separation, 0,1e2))
+
         #collision_penalty = jnp.sum(
         #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
-        x_dist = 1e3 * (state[0] - u_x) ** 2 #1e3
-        y_dist = 1e3 * (state[1] - u_y) ** 2
+        #jax.debug.print("Time Step: {}", time_step)
+        x_dist = (1e3 * (state[0] - u_x) ** 2)  #1e3
+        y_dist = (1e3 * (state[1] - u_y) ** 2)
 
-        min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e3, 0)
+        max_move_x = jnp.maximum(jnp.abs(state[0] - u_x) - 2, 0)**2
+        max_move_y = jnp.maximum(jnp.abs(state[1] - u_y) - 2, 0)**2
+
+        max_move = (max_move_x + max_move_y)*1e3
+        #min_move = jnp.linalg.norm(state - jnp.array(control))
 
         # how to allow for backtracking? balance cost of getting near object/ramming through it with cost of taking a longer route
         #minimize sum of distances away from beads
-
+        #jax.debug.print(f"{step.val}")
         #
-        return collision_avoidance_penalty + x_dist + y_dist #- total_separation
+        return collision_avoidance_penalty + x_dist + y_dist# + max_move
 
 
 class MPCTerminalCost(NamedTuple):
@@ -410,12 +475,79 @@ class MPCTerminalCost(NamedTuple):
 
     def __call__(self, state):
         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+        time_step = self.env.time_step
         #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
-        #goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
-        goal_penalty = distance_to_goal ** 2
-        return 1e3 * goal_penalty
+        goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
+        #goal_penalty = distance_to_goal ** 2
+        return 1e3 * goal_penalty * (1.001**time_step)
         #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
+# class RunningCost(NamedTuple):
+#     env: Environment
+#     dt: jnp.array
+#
+#     def __call__(self, state, control, step):
+#         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
+#         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
+#         asteroids = self.env.asteroids
+#         separation_distance = jnp.linalg.norm(self.env.wrap_vector(state - asteroids.center), axis=-1) - asteroids.radius - self.env.obj_bead_radius
+#         total_separation = 1e-3 * jnp.sum(separation_distance**2)
+#
+#         #soft_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 2*OBSTACLE_SEPARATION, 0,  1e2 * (OBSTACLE_SEPARATION - separation_distance) ** 2))
+#
+#         hard_avoidance_penalty = jnp.sum(jnp.where(separation_distance > 1.75*OBSTACLE_SEPARATION, 0, 1e3 * (OBSTACLE_SEPARATION - separation_distance) ** 2))
+#
+#         u_x, u_y = control
+#         x_dist = 3e3 * (state[0] - u_x) ** 2 #1e3
+#         y_dist = 3e3 * (state[1] - u_y) ** 2
+#
+#         #min_move = jnp.where(jnp.abs(state[0] - u_x) + jnp.abs(state[1] - u_y) < 1, 1e4, 0)
+#
+#         total_cost = x_dist + y_dist + hard_avoidance_penalty
+#
+#         #jax.debug.print("{}", total_cost)
+#
+#         return total_cost
+#
+#
+# class MPCTerminalCost(NamedTuple):
+#     env: Environment
+#     goal_position: jnp.array
+#
+#     @classmethod
+#     def create_ignoring_extra_args(cls, env, goal_position, *args, **kwargs):
+#         return cls(env, goal_position)
+#
+#     def __call__(self, state):
+#         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+#         #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
+#         goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
+#        # goal_penalty = distance_to_goal ** 2
+#         #goal_penalty = jnp.where(distance_to_goal > 25, distance_to_goal ** 2, distance_to_goal ** 10)
+#
+#         return 1e4 * goal_penalty
+#         #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
+
+# class MPCTerminalCost(NamedTuple):
+#     env: Environment
+#     goal_position: jnp.array
+#
+#     @classmethod
+#     def create_ignoring_extra_args(cls, env, goal_position, *args, **kwargs):
+#         return cls(env, goal_position)
+#
+#     def __call__(self, state):
+#         distance_to_goal = jnp.linalg.norm(state[:2] - self.goal_position)
+#
+#         far_goal_penalty = jnp.where(distance_to_goal > 75, (distance_to_goal - 75), 0)
+#
+#         near_goal_penalty = jnp.where(distance_to_goal <= 75,
+#                                       distance_to_goal ** 2,
+#                                       0)
+#
+#         goal_penalty = far_goal_penalty + near_goal_penalty
+#
+#         return 1e3 * goal_penalty
 
 class FullHorizonTerminalCost(NamedTuple):
     env: Environment
@@ -428,7 +560,6 @@ class FullHorizonTerminalCost(NamedTuple):
     def __call__(self, state):
         return 10000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
-
 def gen_initial_traj(start_state, goal_state, N):
     xs, ys = start_state
     xg, yg = goal_state
@@ -438,7 +569,6 @@ def gen_initial_traj(start_state, goal_state, N):
 
     traj = jnp.array([x_traj.T, y_traj.T])
     return traj
-
 
 @functools.partial(jax.jit, static_argnames=["running_cost_type", "terminal_cost_type", "limited_sensing", "N", "dynamics"])
 def policy(state, goal_position, u_guess, env, dynamics, running_cost_type, terminal_cost_type, empty_env, limited_sensing=False, N=20):

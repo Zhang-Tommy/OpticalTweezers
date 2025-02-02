@@ -16,7 +16,7 @@ class Bead:
         self.is_trapped = False  # If a bead is trapped under laser power
         self.x = x_start
         self.y = y_start
-        self.bead_size = 12  # Radius of the bead
+        self.bead_size = BEAD_RADIUS  # Radius of the bead
         if x_start is not None:
             self.create_bead()
         self.active = False

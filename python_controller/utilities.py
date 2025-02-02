@@ -3,9 +3,173 @@ import socket
 import subprocess
 import time
 import numpy as np
-
+import cv2
+import math
+import jax
+import jax.numpy as jnp
 from harvesters.core import Harvester
 from constants import *
+from multiprocessing.managers import BaseManager
+
+class SpotManagerManager(BaseManager):
+    pass
+
+def create_artificial_obs(clustering, kps_array, frame):
+    labels = clustering.labels_
+    num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+    labelled_clusters = np.concatenate((kps_array,labels[:,np.newaxis]),axis=1)
+    artifical_pts = []
+    # for each cluster found
+    for i in range(num_clusters):
+        filter = np.asarray([i])
+        cluster_pts = labelled_clusters[np.in1d(labelled_clusters[:, -1], filter)]
+        cluster_pts = cluster_pts[:, 0:-1]
+        # for each point in cluster
+        # draw a line from point 0 to point 1 then point 1 to point 2...
+        start_pt = cluster_pts[0, :].astype(int)
+        for j in range(len(cluster_pts) - 1):
+            if DEBUG:
+                cv2.line(frame, start_pt, cluster_pts[j+1, :].astype(int), (256, 0, 256), 1)
+            line_dist = jnp.linalg.norm(start_pt - cluster_pts[j+1, :].astype(int))
+            if line_dist > BEAD_RADIUS:
+                n_pts = int((line_dist - BEAD_RADIUS) / (BEAD_RADIUS))
+                interp_pts = np.linspace(start_pt, cluster_pts[j+1, :].astype(int), num=n_pts, endpoint=False)
+                interp_pts = interp_pts[1:, :]
+                artifical_pts.extend(interp_pts.tolist())
+                if DEBUG:
+                    for pt in interp_pts:
+                        cv2.circle(frame, pt.astype(int), 13, (128, 0, 0), 1)
+                start_pt = cluster_pts[j + 1, :].astype(int)
+
+    return frame, artifical_pts
+
+@jax.jit
+def min_dist_to_ellipse(axis, pt):
+    a, b = axis
+    y0, y1 = pt
+
+    # bisection bounds
+    t0 = -(b ** 2) + b * y1
+    t1 = -(b ** 2) + jnp.sqrt(((a ** 2) * (y0 ** 2)) + ((b ** 2) * (y1 ** 2)))
+
+    # solve F to get roots
+    def F(t, a, b, y0, y1):
+        term0 = ((a * y0) / (t + a ** 2)) ** 2
+        term1 = ((b * y1) / (t + b ** 2)) ** 2
+        return term0 + term1 - 1
+
+    def bisection_step(val, _):
+        t0, t1 = val
+        t_mid = (t0 + t1) / 2.0
+        f_mid = F(t_mid, a, b, y0, y1)
+
+        t0_new = jnp.where(f_mid > 0, t_mid, t0)
+        t1_new = jnp.where(f_mid <= 0, t_mid, t1)
+        return (t0_new, t1_new), None
+
+    (t0_final, t1_final), _ = jax.lax.scan(bisection_step, (t0, t1), None, length=50)
+
+    tbar = (t0_final + t1_final) / 2.0
+
+    x0 = a * a * y0 / (tbar + a * a)
+    x1 = b * b * y1 / (tbar + b * b)
+
+    dist = jnp.sqrt((x0 - y0) ** 2 + (x1 - y1) ** 2)
+
+    return dist
+
+def mouse_callback(event, x, y, flags, param):
+    spot_man, traps, dragging_trap_idx = param
+    trapped_beads = []
+    for pos in spot_man.get_trapped_beads().keys():
+        trapped_beads.append(pos)
+
+    line_trap = cv2.getTrackbarPos('LineTrap', 'Optical Tweezers Simulator')
+    donut_trap = cv2.getTrackbarPos('DonutTrap', 'Optical Tweezers Simulator')
+
+    # if line_trap and donut_trap:
+    #     cv2.setTrackbarPos('LineTrap', 'Optical Tweezers Simulator', 0)
+
+    mouse_pos = (x,y)
+    if event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_ALTKEY: # donut
+        #donut_goal.append((x, y))
+        spot_man.add_goal_pos(mouse_pos, is_donut=True)
+        print("Donut Goal Added")
+    elif event == cv2.EVENT_LBUTTONDOWN and flags & cv2.EVENT_FLAG_CTRLKEY: # line
+        #line_goal.append((x, y))
+        spot_man.add_goal_pos(mouse_pos, is_line=True)
+        print("Line Goal Added")
+    elif event == cv2.EVENT_LBUTTONDOWN:  # Left click to add or select trap
+        for i, trap in enumerate(traps):
+            if np.linalg.norm(np.array([x, y]) - np.array(trap)) < 15:
+                dragging_trap_idx[0] = i  # Start dragging this trap
+                return
+        # Add new trap if none selected
+        if line_trap:
+            spot_man.add_spot(mouse_pos, is_line=True)
+            spot_man.add_start(mouse_pos, is_line=True)
+        elif donut_trap:
+            spot_man.add_spot((x,y), is_donut=True)
+            #donut_start.append((x, y))
+            spot_man.add_start(mouse_pos, is_donut=True)
+        else:
+            spot_man.add_spot((x,y))
+            spot_man.add_start(mouse_pos)
+
+        traps.append((x,y))
+    elif event == cv2.EVENT_RBUTTONDOWN:  # Right click to remove trap
+        for j, trap in enumerate(traps):
+            if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
+                spot_man.remove_trap((trap[0], trap[1]))
+                spot_man.remove_start((trap[0], trap[1]))
+                traps.pop(j)
+                return
+
+        for k, trap in enumerate(trapped_beads):
+            if np.linalg.norm(np.array([x,y]) - np.array(trap)) < 15:
+                spot_man.remove_trap((trap[0], trap[1]))
+                #spot_man.remove_start((trap[0], trap[1]))
+                #traps.pop(k)
+                return
+        for goal in spot_man.get_goal_pos():
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
+                return
+        for goal in spot_man.get_goal_pos(is_donut=True):
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
+                return
+        for goal in spot_man.get_goal_pos(is_line=True):
+            if np.linalg.norm(np.array([x,y]) - np.array(goal)) < 15:
+                spot_man.remove_goal_pos((goal[0], goal[1]))
+                return
+    elif event == cv2.EVENT_MOUSEMOVE:  # Dragging trap around
+        if dragging_trap_idx[0] is not None:
+            old_pos = traps[dragging_trap_idx[0]]
+
+            spot_man.move_trap(old_pos, mouse_pos)
+
+            traps[dragging_trap_idx[0]] = mouse_pos
+
+            if old_pos in spot_man.get_start_pos(is_line=True):
+                spot_man.remove_start(old_pos)
+                spot_man.add_start(mouse_pos, is_line=True)
+            elif old_pos in spot_man.get_start_pos(is_donut=True):
+                spot_man.remove_start(old_pos)
+                spot_man.add_start(mouse_pos, is_donut=True)
+            else:
+                spot_man.remove_start(old_pos)
+                spot_man.add_start(mouse_pos)
+            return
+    elif event == cv2.EVENT_LBUTTONUP:  # Release dragging
+        dragging_trap_idx[0] = None
+    elif event == cv2.EVENT_RBUTTONDBLCLK:
+        # Todo: deselect a bead
+        pass
+    elif event == cv2.EVENT_MBUTTONDOWN:
+        # add goal point
+        spot_man.add_goal_pos(mouse_pos)
 
 def init_holo_engine():
     """Initializes hologram engine by sending shader source code and updating uniform variables
@@ -41,6 +205,45 @@ def init_holo_engine():
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
     server_socket.close()
     return holo_process
+
+def draw_traps(spot_man, frame):
+    """
+    Draws line, donut, and point traps on the displayed image
+    """
+    traps = spot_man.get_trapped_beads()
+    goals = spot_man.get_goal_pos() #+ spot_man.get_goal_pos(is_line=True) + spot_man.get_goal_pos(is_donut=True)
+    #virtual_traps = spot_man.get_virtual_traps()
+
+    for donut_goal in spot_man.get_goal_pos(is_donut=True):
+        cv2.circle(frame, (donut_goal[0], donut_goal[1]), 4, (0, 128, 256), -1)
+        cv2.circle(frame, (donut_goal[0], donut_goal[1]), 8, (0, 128, 256), 1)
+    for line_goal in spot_man.get_goal_pos(is_line=True):
+        cv2.circle(frame, (line_goal[0], line_goal[1]), 4, (64, 128, 0), 1)
+
+    for goal in goals:
+        x, y = goal
+        cv2.circle(frame, (x, y), 12, (64, 128, 0), 1)
+
+    for key in traps:  # Draw traps
+        x, y = key
+        spot = traps.get(key)
+        #sim_man.trap_bead(key)
+        if spot.is_line:
+            length = 60
+            half_length = length / 2
+            angle = spot.angle + (math.pi / 2)
+
+            x_start = int(x - half_length * np.cos(angle))
+            y_start = int(y - half_length * np.sin(angle))
+            x_end = int(x + half_length * np.cos(angle))
+            y_end = int(y + half_length * np.sin(angle))
+
+            cv2.line(frame, (x_start, y_start), (x_end, y_end), (256, 0, 256), 1)
+        elif spot.is_donut:
+            cv2.circle(frame, (x, y), 23, (256, 0, 0), 1)
+        else:
+            cv2.circle(frame, (x, y), 12, (0, 256, 0), 1)
+    return frame
 
 def start_image_acquisition():
     """ Initializes the gigE camera"""
