@@ -62,15 +62,25 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
     state = start_state
     dynamics = RK4Integrator(ContinuousTimeBeadDynamics(), DT)
     time_step = 0
+    ctrl_idx = 0
+    empty_env = Environment.create(0, jnp.array([]))
+    # We can decrease N as we get closer to the goal
+    # But we shouldn't jax.jit recompile in the while loop
+    # for i in range(35, N):
+    #     init_control = gen_initial_traj(start_state, goal_position, i).T
+    #     #policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, i)
+    #     lowered = jax.jit(policy, static_argnums=(4, 5, 6, 8, 9)).lower(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, i)
+    #     compiled = lowered.compile()
+    #     print(f"Compiled {i}")
+
     while True:
         st = time.time()
-        empty_env = Environment.create(0, jnp.array([]))
 
-        if time_step % 5 == 0:
+        if time_step % MPC_COMPUTE_FREQ == 0:
             solution = policy(state, goal_position, init_control, env, dynamics, RunningCost, MPCTerminalCost, empty_env, False, N_n)
             states, opt_controls = solution["optimal_trajectory"]
 
-        if time_step % 5 == 0:
+        if time_step % MPC_COMPUTE_FREQ == 0:
             ctrl_idx = 0
         else:
             ctrl_idx += 1
@@ -83,7 +93,10 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         except:
             print(f"Trap move out of bounds invalid: {state[0]}, {state[1]} to {control[0]}, {control[1]}")
             return
+
+
         init_control = opt_controls
+        #init_control = gen_perturbed_controls(opt_controls, 10, 20, key)
         state = control  # The control is the position of the bead (wherever we place the trap is wherever the bead will go)
 
         controls_parent.send(opt_controls)
@@ -101,6 +114,8 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         if dist_to_goal < GOAL_DIST_OBSTACLE_FREE and kpsarray.size != 0:
             distances = np.linalg.norm(kpsarray - goal_position, axis=1)
             kpsarray = kpsarray[distances > 75]
+
+        # N_n = int(0.063 * dist_to_goal + 34.6)
 
         current_length = kpsarray.shape[0]
         if current_length < KPS_SIZE:
@@ -123,6 +138,7 @@ def holo(controls_parent, spot_man, goal, start, is_donut=False, is_line=False):
         et = time.time()
         time_step += 1
         # rudimentary timing controller
+        print(et - st)
         if 1 / (et - st) > 20 and 0.05 - (et - st) > 0:
             time.sleep(0.05 - (et - st))
 

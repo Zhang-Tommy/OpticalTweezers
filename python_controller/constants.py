@@ -36,10 +36,11 @@ DT = 1e-3  #1e-3
 
 """ Planning horizon steps"""
 N = 85  # 85
+MPC_COMPUTE_FREQ = 2 # Number of time steps until recompute state/control sequence (minimum val 1) -> high vals = less compute required
 
 """ Debug mode"""
 DEBUG = True
-SIMULATOR_MODE = False
+SIMULATOR_MODE = True
 
 """ Bead radius in pixels"""
 BEAD_RADIUS = 13
