@@ -412,6 +412,7 @@ class RunningCost(NamedTuple):
     def __call__(self, state, control, step):
         # NOTE: many parameters (gains, offsets) in this function could be lifted to fields of `RunningCost`, in which
         # case you could experiment with changing these parameters without incurring `jax.jit` recompilation.
+        #jax.debug.print("Step: {}", step)
         asteroids = self.env.asteroids
         time_step = self.env.time_step
         separation = RunningCost.obstacle_separation
@@ -449,8 +450,8 @@ class RunningCost(NamedTuple):
         #    jnp.where(separation_distance > 2, 0, 1e5))
         u_x, u_y = control
         #jax.debug.print("Time Step: {}", time_step)
-        x_dist = (1e3 * (state[0] - u_x) ** 2)  #1e3
-        y_dist = (1e3 * (state[1] - u_y) ** 2)
+        x_dist = (1e3 * (state[0] - u_x) ** 2) #* (step + 1) #1e3
+        y_dist = (1e3 * (state[1] - u_y) ** 2) #* (step + 1)
 
         max_move_x = jnp.maximum(jnp.abs(state[0] - u_x) - 2, 0)**2
         max_move_y = jnp.maximum(jnp.abs(state[1] - u_y) - 2, 0)**2
@@ -479,7 +480,7 @@ class MPCTerminalCost(NamedTuple):
         #goal_penalty = jnp.where(distance_to_goal > 50,  2 * (distance_to_goal - 50), 5e4 * distance_to_goal ** 2)
         goal_penalty = jnp.where(distance_to_goal > 25, 2 * (distance_to_goal - 25), distance_to_goal ** 2)
         #goal_penalty = distance_to_goal ** 2
-        return 1e3 * goal_penalty * (1.001**time_step)
+        return 1e3 * goal_penalty #* (1.001**time_step)
         #return 1000 * jnp.sum(jnp.square(state[:2] - self.goal_position))
 
 # class RunningCost(NamedTuple):
