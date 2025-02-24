@@ -7,9 +7,11 @@ import cv2
 import math
 import jax
 import jax.numpy as jnp
+import torch
 from harvesters.core import Harvester
 from constants import *
 from multiprocessing.managers import BaseManager
+from phase_prediction import mlp
 
 class SpotManagerManager(BaseManager):
     pass
@@ -205,6 +207,51 @@ def init_holo_engine():
     server_socket.sendto(str.encode(uniform_vars), ('127.0.0.1', 61557))
     server_socket.close()
     return holo_process
+
+def init_phase_predictor():
+    """ Takes place of hologram engine, start opencv window and initialize pre-trained NN for phase mask predictions """
+    model_path = r"C:\Users\tommyz\Desktop\Code\phase_prediction\models\mlp_model_5_spot_512-1024-2048-800k.pth"
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    def load_model(model_path):
+        model = mlp.MLP().to(device)
+        model.load_state_dict(torch.load(model_path))
+        model.eval()
+        return model
+
+    model = load_model(model_path)
+
+    return model
+
+
+def predict_mask(spot_array, model):
+    """ Input spot array, convert to n, 4, 4 array for model input """
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    n = spot_array.shape[0]
+    b = n // 16
+
+    input_array = spot_array.reshape(b, 4, 4)
+    if b < 5:
+        pad_size = (5 - b, 4, 4)  # Compute required padding
+        input_array = np.pad(input_array, ((0, pad_size[0]), (0, 0), (0, 0)), mode='constant', constant_values=0)
+
+    spots_tensor = torch.tensor(input_array, dtype=torch.float32)
+    spots_tensor = spots_tensor.unsqueeze(0)
+    spots_tensor = spots_tensor.to(device)
+
+    with torch.no_grad():  # Ensure no gradients are computed
+        predicted_mask = model(spots_tensor).cpu().numpy()
+    predicted_mask = predicted_mask[0]
+    predicted_mask = (predicted_mask - predicted_mask.min()) / (predicted_mask.max() - predicted_mask.min()) * 255
+    predicted_mask = predicted_mask.astype(np.uint8)
+
+    cv2.namedWindow("Mask", cv2.WND_PROP_FULLSCREEN)
+    cv2.setWindowProperty("Mask", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    cv2.moveWindow("Mask", 0, 0)
+    cv2.resizeWindow("Mask", 512, 512)
+    #print(np.max(predicted_mask))
+    cv2.imshow("Mask", predicted_mask)
+    cv2.waitKey(1)
 
 def draw_traps(spot_man, frame):
     """

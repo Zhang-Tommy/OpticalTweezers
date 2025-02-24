@@ -6,8 +6,9 @@ import h5py
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 class MLP(nn.Module):
-    def __init__(self, input_size=16, hidden_sizes=[256, 512, 1024], output_size=512 * 512):
+    def __init__(self, input_size=160, hidden_sizes=[256, 512, 1024, 2048], output_size=512 * 512):
         super(MLP, self).__init__()
         self.flatten = nn.Flatten()
 
@@ -38,16 +39,16 @@ class HDF5Dataset(data.Dataset):
 
     def __getitem__(self, idx):
         with h5py.File(self.file_path, 'r') as f:
-            x = f['inputs'][idx]  # Shape: (1, 4, 4)
+            x = f['inputs'][idx]  # Shape: (10, 4, 4)
             y = f['outputs'][idx]  # Shape: (512, 512)
         return torch.tensor(x, dtype=torch.float32).squeeze(0), torch.tensor(y, dtype=torch.float32)
 
-if __name__ is "__main__":
-    B = 1000
+if __name__ == "__main__":
+    B = 200
     epochs = 1
-    learning_rate = 0.001
+    learning_rate = 0.002
 
-    dataset = HDF5Dataset("./data/train_data_1_spot.hdf5")
+    dataset = HDF5Dataset("./data/train_data_10_new.hdf5")
     dataloader = data.DataLoader(dataset, batch_size=B, shuffle=True)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -67,7 +68,7 @@ if __name__ is "__main__":
             if batch_idx % 10 == 0:
                 print(f"Epoch [{epoch + 1}/{epochs}], Batch [{batch_idx + 1}/{len(dataloader)}], Loss: {loss.item():.6f}")
 
-    model_path = "mlp_model.pth"
+    model_path = "mlp_model_new.pth"
     torch.save(model.state_dict(), model_path)
 
     def load_model(model_path):

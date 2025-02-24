@@ -533,6 +533,8 @@ if __name__ == "__main__":
     SpotManagerManager.register('remove_trap', SpotManager.remove_trap)
     SpotManagerManager.register('set_clearing_region', SpotManager.set_clearing_region)
     SpotManagerManager.register('get_clearing_region', SpotManager.get_clearing_region)
+    SpotManagerManager.register('predict_mask', predict_mask)
+    SpotManagerManager.register('init_phase_predictor', init_phase_predictor)
 
     manager = SpotManagerManager()
     manager.start()
@@ -544,7 +546,7 @@ if __name__ == "__main__":
     spot_lock = Lock()
 
     p1 = Process(target=simulator, args=(spot_man, controls_child, controls_parent))
-    p2 = Process(target=init_holo_engine, args=())
+    #p2 = Process(target=init_phase_predictor, args=())
     p3 = Process(target=cam, args=(spot_man, controls_child, controls_parent))
 
     if SIMULATOR_MODE:
@@ -552,13 +554,13 @@ if __name__ == "__main__":
     else:
         p3.start()
 
-    p2.start()
+    #p2.start()
 
     if SIMULATOR_MODE:
         p1.join()
     else:
         p3.join()
 
-    p2.join()
+    #p2.join()
 
 

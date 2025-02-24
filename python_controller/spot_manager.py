@@ -25,6 +25,7 @@ class SpotManager:
         self.fake_obstacles = []  # holds (x,y) pos of fake obstacles created via clustering
         self.virtual_x_pos = np.arange(20)  # Store x positions of virtual traps
         self.clearing_region = False  # Bool which indicates state of clear region feature
+        self.model = init_phase_predictor()
 
     def set_clearing_region(self, bool):
         self.clearing_region = bool
@@ -172,7 +173,9 @@ class SpotManager:
         packet = start + string + end
 
         # Send to hologram engine
-        send_data(packet)
+        send_data(packet) # modification for MLP phase predictor here
+        predict_mask(self.spots_vec[0:self.num_spots * 16], self.model)
+        # convert packet into spot array, pad with zeros if needed, contain error check for maximum number of spots
 
     def update_num_traps(self):
         start = '<uniform id=0>\n'
@@ -257,23 +260,24 @@ class SpotManager:
         """
         Ensures traps have a similar amount of power
         """
-        num_trapped_beads = len(self.trapped_beads)
-        if num_trapped_beads == 0:
-            return
-        num_virtual_traps = len(self.virtual_traps)
-
-        total_power = num_virtual_traps * AVG_DESIRED_LASER_PWR + num_trapped_beads * AVG_DESIRED_LASER_PWR
-        #print(f"Total Power: {total_power}, Num_Virtual_Traps={num_virtual_traps}, Num_Trapped_beads={num_trapped_beads}")
-        if total_power > TOTAL_LASER_PWR:
-            num_virtual_remove = int((total_power - TOTAL_LASER_PWR) / AVG_DESIRED_LASER_PWR)
-            if num_virtual_traps == 0:
-                print("Warning: Cannot remove more virtual traps - trap power will be limited")
-            else:
-                for i in range(num_virtual_remove):
-                    virtual_trap = self.virtual_traps.popitem()  # remove virtual trap
-                    self.remove_trap(virtual_trap[0], is_virtual=True)
-        elif total_power < TOTAL_LASER_PWR:
-            num_virtual_add = int((TOTAL_LASER_PWR - total_power) / AVG_DESIRED_LASER_PWR)
-            for i in range(num_virtual_add):
-                x = self.virtual_x_pos[num_virtual_traps + 1 + i]
-                self.add_spot((x, 0), is_virtual=True)
+        return
+        # num_trapped_beads = len(self.trapped_beads)
+        # if num_trapped_beads == 0:
+        #     return
+        # num_virtual_traps = len(self.virtual_traps)
+        #
+        # total_power = num_virtual_traps * AVG_DESIRED_LASER_PWR + num_trapped_beads * AVG_DESIRED_LASER_PWR
+        # #print(f"Total Power: {total_power}, Num_Virtual_Traps={num_virtual_traps}, Num_Trapped_beads={num_trapped_beads}")
+        # if total_power > TOTAL_LASER_PWR:
+        #     num_virtual_remove = int((total_power - TOTAL_LASER_PWR) / AVG_DESIRED_LASER_PWR)
+        #     if num_virtual_traps == 0:
+        #         print("Warning: Cannot remove more virtual traps - trap power will be limited")
+        #     else:
+        #         for i in range(num_virtual_remove):
+        #             virtual_trap = self.virtual_traps.popitem()  # remove virtual trap
+        #             self.remove_trap(virtual_trap[0], is_virtual=True)
+        # elif total_power < TOTAL_LASER_PWR:
+        #     num_virtual_add = int((TOTAL_LASER_PWR - total_power) / AVG_DESIRED_LASER_PWR)
+        #     for i in range(num_virtual_add):
+        #         x = self.virtual_x_pos[num_virtual_traps + 1 + i]
+        #         self.add_spot((x, 0), is_virtual=True)

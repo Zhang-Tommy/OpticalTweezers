@@ -51,6 +51,8 @@ for i in range(int(N / B)):
 
     batch = jnp.zeros((B, num_spots, 4, 4), dtype=jnp.float32)
     batch, _ = jax.lax.scan(scan_func, batch, xs)
+
+    print(batch.shape)
     result = batch_compute(batch)
 
     inputs[i*B:(i+1)*B, :, :] = batch
