@@ -53,14 +53,13 @@ ELLIPSE_MINOR_AXIS = 12
 ELLIPSE_MAJOR_AXIS = 30 # pixels
 
 """ Annular trap vortex charge/twist """
-ANNULAR_TRAP_VORTEX_CHARGE = 7
-
+ANNULAR_TRAP_VORTEX_CHARGE = 9
 """ Obstacle separation boundary"""
 OBSTACLE_SEPARATION = 26 + 7
 
 OBSTACLE_SEPARATION_OG = 26 + 7
 
-DONUT_Z_OFFSET = -4.0
+DONUT_Z_OFFSET = -3.0
 
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
 KPS_SIZE = 50
