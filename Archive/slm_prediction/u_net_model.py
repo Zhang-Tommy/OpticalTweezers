@@ -98,8 +98,8 @@ class H5Dataset(Dataset):
 
 if __name__ == "__main__":
     # Paths to the .h5 files
-    far_field_path = 'data/farfield_full.h5'
-    phase_mask_path = 'data/phase_masks_full.h5'
+    far_field_path = '../../unet/train_data/farfield_full.h5'
+    phase_mask_path = '../../unet/train_data/phase_masks_full.h5'
 
     # Load dataset
     dataset = H5Dataset(far_field_path, phase_mask_path)

@@ -8,9 +8,9 @@ import time
 
 N = 100000 # total samples
 B = 200 # batch size (10 x 4 x 4)
-num_spots = 10
+num_spots = 1
 
-f = h5py.File("./data/10_spots_100000_samples.hdf5", "w")
+f = h5py.File("./data/1_spot_100000_samples.hdf5", "w")
 inputs = f.create_dataset("inputs", (N, num_spots, 4, 4))
 outputs = f.create_dataset("outputs", (N, 512, 512))
 

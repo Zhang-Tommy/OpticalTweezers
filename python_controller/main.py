@@ -546,7 +546,7 @@ if __name__ == "__main__":
     spot_lock = Lock()
 
     p1 = Process(target=simulator, args=(spot_man, controls_child, controls_parent))
-    #p2 = Process(target=init_phase_predictor, args=())
+    p2 = Process(target=init_holo_engine(), args=())
     p3 = Process(target=cam, args=(spot_man, controls_child, controls_parent))
 
     if SIMULATOR_MODE:
@@ -561,6 +561,6 @@ if __name__ == "__main__":
     else:
         p3.join()
 
-    #p2.join()
+    p2.join()
 
 

@@ -89,6 +89,9 @@ spots = np.array([
          [0.000000, 0.000000, 0.000000, 0.000000],
          [0.000000, 0.000000, 0.000000, 0.000000]]
     ])
+
+
+
 spots_tensor = torch.tensor(spots, dtype=torch.float32)
 spots_tensor = spots_tensor.unsqueeze(0)
 spots_tensor = spots_tensor.to(device)

@@ -4,15 +4,14 @@ import subprocess
 import time
 import numpy as np
 import cv2
-import math
 import jax
 import jax.numpy as jnp
 import torch
 from harvesters.core import Harvester
 from constants import *
 from multiprocessing.managers import BaseManager
-from phase_prediction import mlp
-
+import read_lut
+from red_tweezers import calculate_phase_mask
 class SpotManagerManager(BaseManager):
     pass
 
@@ -208,20 +207,22 @@ def init_holo_engine():
     server_socket.close()
     return holo_process
 
+
+
 def init_phase_predictor():
     """ Takes place of hologram engine, start opencv window and initialize pre-trained NN for phase mask predictions """
-    model_path = r"C:\Users\tommyz\Desktop\Code\phase_prediction\models\mlp_model_5_spot_512-1024-2048-800k.pth"
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-    def load_model(model_path):
-        model = mlp.MLP().to(device)
-        model.load_state_dict(torch.load(model_path))
-        model.eval()
-        return model
-
-    model = load_model(model_path)
-
-    return model
+    # model_path = r"C:\Users\tommyz\Desktop\Code\phase_prediction\models\mlp_model_5_spot_512-1024-2048-800k.pth"
+    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    #
+    # def load_model(model_path):
+    #     model = mlp.MLP().to(device)
+    #     model.load_state_dict(torch.load(model_path))
+    #     model.eval()
+    #     return model
+    #
+    # model = load_model(model_path)
+    pass
+    #return model
 
 
 def predict_mask(spot_array, model):
@@ -235,21 +236,34 @@ def predict_mask(spot_array, model):
         pad_size = (5 - b, 4, 4)  # Compute required padding
         input_array = np.pad(input_array, ((0, pad_size[0]), (0, 0), (0, 0)), mode='constant', constant_values=0)
 
-    spots_tensor = torch.tensor(input_array, dtype=torch.float32)
-    spots_tensor = spots_tensor.unsqueeze(0)
-    spots_tensor = spots_tensor.to(device)
-
-    with torch.no_grad():  # Ensure no gradients are computed
-        predicted_mask = model(spots_tensor).cpu().numpy()
+    # input to redtweezers.py
+    # spots_tensor = torch.tensor(input_array, dtype=torch.float32)
+    # spots_tensor = spots_tensor.unsqueeze(0)
+    print(f"Input array shape: {input_array.shape}")
+    print(input_array)
+    predicted_mask = calculate_phase_mask(input_array, 5, 512)
     predicted_mask = predicted_mask[0]
+    # spots_tensor = spots_tensor.to(device)
+    #
+    # with torch.no_grad():  # Ensure no gradients are computed
+    #     predicted_mask = model(spots_tensor).cpu().numpy()
+    # predicted_mask = predicted_mask[0]
     predicted_mask = (predicted_mask - predicted_mask.min()) / (predicted_mask.max() - predicted_mask.min()) * 255
-    predicted_mask = predicted_mask.astype(np.uint8)
+    predicted_mask = np.array(predicted_mask.astype(np.uint8))
 
     cv2.namedWindow("Mask", cv2.WND_PROP_FULLSCREEN)
     cv2.setWindowProperty("Mask", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.moveWindow("Mask", 0, 0)
     cv2.resizeWindow("Mask", 512, 512)
     #print(np.max(predicted_mask))
+    lut_map = read_lut.read_cube_lut()
+    print(predicted_mask)
+    print(predicted_mask.shape)
+    rgb_mask = read_lut.apply_lut(predicted_mask, lut_map).astype(np.uint8)
+    predicted_mask = np.rot90(predicted_mask, 1)
+    #predicted_mask = np.flip(predicted_mask)
+    predicted_mask = np.flip(predicted_mask, axis=0)
+    #predicted_mask = np.flip(predicted_mask, axis=1)
     cv2.imshow("Mask", predicted_mask)
     cv2.waitKey(1)
 

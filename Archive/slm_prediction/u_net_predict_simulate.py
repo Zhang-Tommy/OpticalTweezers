@@ -72,8 +72,8 @@ class UNet(torch.nn.Module):
         return out
 
 if __name__ == "__main__":
-    far_field_path = 'data/farfield_full.h5'
-    phase_mask_path = 'data/phase_masks_full.h5'
+    far_field_path = '../../unet/train_data/farfield_full.h5'
+    phase_mask_path = '../../unet/train_data/phase_masks_full.h5'
 
     # Number of samples to predict on
     num_samples = 1
