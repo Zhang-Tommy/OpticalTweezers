@@ -14,10 +14,10 @@ import jax
 from collections import OrderedDict
 
 B = 1
-model_path = "best_unet_64_intensity_loss.pth"
+model_path = "best_unet_256_200k.pth"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-dataset = HDF5Dataset("train_data/unet_2000_64.hdf5")
+dataset = HDF5Dataset("train_data/unet_2000_256.hdf5")
 dataloader = data.DataLoader(dataset, batch_size=B, shuffle=True)
 
 # def load_model(model_path):
@@ -27,7 +27,7 @@ dataloader = data.DataLoader(dataset, batch_size=B, shuffle=True)
 #     return model
 
 def load_model(model_path):
-    model = UNet(in_channels=1, out_channels=1, init_features=16).to(device)
+    model = UNet(in_channels=1, out_channels=1, init_features=64).to(device)
     state_dict = torch.load(model_path, map_location=device)
 
     # Remove "module." prefix if trained with DataParallel
@@ -48,22 +48,19 @@ def phase_to_intensity(phase_masks_reference):
         return jnp.exp(-(xx ** 2 + yy ** 2) / (2 * beam_width ** 2))
 
     mask_sz = phase_masks_reference.shape[1]
-    incident_beam = gaussian_beam(mask_sz, beam_width=.2)
+
+    phase_masks_reference = np.rot90(phase_masks_reference, 1)
+    phase_masks_reference = np.flip(phase_masks_reference, 0)
+    incident_beam = gaussian_beam(mask_sz, beam_width=.1)
 
     slm_field = incident_beam * jnp.exp(1j * phase_masks_reference)
 
-    # slm_field = jax.image.resize(
-    #     slm_field,
-    #     shape=(mask_sz * 2, mask_sz * 2),
-    #     method="nearest"  # or "nearest", "lanczos"
-    # )
-
     far_field = fftshift(fft2(slm_field)) / ((mask_sz * 2) ** 2)
     intensity = jnp.abs(far_field)
-    #print(intensity.shape)
+
     intensity = np.power(intensity, 1/4)
-    #intensity = intensity[64:, 64:]
-    #intensity = jnp.log(intensity)
+
+
     return intensity
 
 
@@ -83,9 +80,8 @@ print(f"Mean Squared Error: {mse_loss:.6f}")
 i = 0
 
 # Grid size
-size = 64
-d = 48
-x0, y0 = d, d  # Center of Gaussian
+size = 256
+x0, y0 = 160, 132  # Center of Gaussian
 sigma = 2  # Spread of Gaussian
 A = 1  # Peak amplitude
 
@@ -102,10 +98,7 @@ point_intensity_np = gaussian[np.newaxis, np.newaxis, :, :].astype(np.float32)
 
 # Convert to PyTorch tensor
 point_intensity = torch.tensor(point_intensity_np, dtype=torch.float32).to(device)
-st = time.time()
 point_prediction = model(point_intensity).detach().cpu().numpy()
-et = time.time()
-print(et - st)
 point_prediction = np.array(point_prediction[0,0,:,:])
 
 #predicted_far_field = fftshift(fft2(jnp.exp(1j * predictions[i,0,:,:] * np.pi)))

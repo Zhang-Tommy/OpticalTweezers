@@ -2,6 +2,8 @@ import os
 import socket
 import subprocess
 import time
+from cmath import phase
+
 import numpy as np
 import cv2
 import jax
@@ -12,6 +14,12 @@ from constants import *
 from multiprocessing.managers import BaseManager
 import read_lut
 from red_tweezers import calculate_phase_mask
+from collections import OrderedDict
+from phase_prediction import unet
+from phase_prediction import input_converter
+import matplotlib.pyplot as plt
+from scipy.fft import fft2, fftshift
+
 class SpotManagerManager(BaseManager):
     pass
 
@@ -181,7 +189,7 @@ def init_holo_engine():
     os.system("taskkill /f /im  hologram_engine_64.exe")
 
     # Launch the new instance
-    executable_path = os.path.join(os.getcwd(), "hologram_engine_64.exe")
+    executable_path = os.path.join(os.getcwd(), "dependencies/hologram_engine_64.exe")
     if os.path.exists(executable_path):
         holo_process = subprocess.Popen([executable_path])
 
@@ -191,8 +199,8 @@ def init_holo_engine():
     #shader_file_path = os.path.join('python_controller', 'shader_source.txt')
     # Define the path to the uniform variables file
     #uniform_vars_file_path = os.path.join('python_controller', 'init_uniform_vars.txt')
-    shader_file_path = 'shader_source.txt'
-    uniform_vars_file_path = 'init_uniform_vars.txt'
+    shader_file_path = 'dependencies/shader_source.txt'
+    uniform_vars_file_path = 'dependencies/init_uniform_vars.txt'
     time.sleep(1)
     with open(shader_file_path, 'r') as file:
         shader_source = file.read()
@@ -207,65 +215,145 @@ def init_holo_engine():
     server_socket.close()
     return holo_process
 
-
-
 def init_phase_predictor():
     """ Takes place of hologram engine, start opencv window and initialize pre-trained NN for phase mask predictions """
-    # model_path = r"C:\Users\tommyz\Desktop\Code\phase_prediction\models\mlp_model_5_spot_512-1024-2048-800k.pth"
-    # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    #
-    # def load_model(model_path):
-    #     model = mlp.MLP().to(device)
-    #     model.load_state_dict(torch.load(model_path))
-    #     model.eval()
-    #     return model
-    #
-    # model = load_model(model_path)
-    pass
-    #return model
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = load_model("./phase_prediction/best_unet_256_200k.pth", device)
+    return model
 
+def load_model(model_path, device):
+    model = unet.UNet(in_channels=1, out_channels=1, init_features=64).to(device)
+    state_dict = torch.load(model_path, map_location=device)
+
+    # Remove "module." prefix if trained with DataParallel
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        new_key = k.replace("module.", "")  # Remove 'module.' prefix
+        new_state_dict[new_key] = v
+
+    model.load_state_dict(new_state_dict)
+    model.eval()
+    return model
 
 def predict_mask(spot_array, model):
     """ Input spot array, convert to n, 4, 4 array for model input """
+    n = spot_array.shape[0] # number of spots * 16
+    spot_array = np.reshape(spot_array, (n // 16, 4, 4))
+
+    mask_type = 'lg'
+    #if mask_type == 'lg':
+    phase_mask = calculate_phase_mask(spot_array, n, 128, False)[0]
+
+    intensity_mask = input_converter.gen_input_intensity(spot_array)
+    #intensity_input = torch.tensor(intensity_mask, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    # lenses and gratings produce output from -pi to pi
+    #elif mask_type == 'unet':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    n = spot_array.shape[0]
-    b = n // 16
+    spot_array[:, 1, 2] = spot_array[:, 0, 0]
+    spot_array[:, 0, 0] = -spot_array[:, 0, 1]
+    spot_array[:, 0, 1] = -spot_array[:, 1, 2]
 
-    input_array = spot_array.reshape(b, 4, 4)
-    if b < 5:
-        pad_size = (5 - b, 4, 4)  # Compute required padding
-        input_array = np.pad(input_array, ((0, pad_size[0]), (0, 0), (0, 0)), mode='constant', constant_values=0)
+    intensity_mask = input_converter.gen_input_intensity(spot_array)
+    intensity_input = torch.tensor(intensity_mask, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+    phase_mask_og = model(intensity_input.to(device))
+    phase_mask_u = phase_mask_og.detach().cpu().numpy().squeeze(0).squeeze(0)
 
-    # input to redtweezers.py
-    # spots_tensor = torch.tensor(input_array, dtype=torch.float32)
-    # spots_tensor = spots_tensor.unsqueeze(0)
-    print(f"Input array shape: {input_array.shape}")
-    print(input_array)
-    predicted_mask = calculate_phase_mask(input_array, 5, 512)
-    predicted_mask = predicted_mask[0]
-    # spots_tensor = spots_tensor.to(device)
+    phase_mask = np.rot90(phase_mask, 1)
+    phase_mask = np.flip(phase_mask, 0)
+
+    phase_mask = ((phase_mask - phase_mask.min()) / (phase_mask.max() - phase_mask.min()) * 255).astype(np.uint8)
+    phase_mask = cv2.resize(np.array(phase_mask), (512, 512), interpolation=0)
+
+    phase_mask_u = ((phase_mask_u - phase_mask_u.min()) / (phase_mask_u.max() - phase_mask_u.min()) * 255).astype(np.uint8)
+    phase_mask_u = cv2.resize(np.array(phase_mask_u), (512, 512), interpolation=0)
+
+    phase_mask_u = np.rot90(phase_mask_u, 1)
+    phase_mask_u = np.flip(phase_mask_u, 0)
+
+    intensity_mask = ((intensity_mask - intensity_mask.min()) / (intensity_mask.max() - intensity_mask.min()) * 255).astype(np.uint8)
+    intensity_mask = cv2.resize(np.array(intensity_mask), (512, 512))
+
+    intensity_mask = np.rot90(intensity_mask, 1)
+    intensity_mask = np.flip(intensity_mask, 0)
+
+
+    def gaussian_beam(mask_size, beam_width):
+        x = np.linspace(-1, 1, mask_size)
+        y = np.linspace(-1, 1, mask_size)
+        xx, yy = np.meshgrid(x, y)
+        return np.exp(-(xx ** 2 + yy ** 2) / (2 * beam_width ** 2))
+
+    def compute_beam_width(mask_sz, reference_size=512, reference_bm=0.05):
+        return reference_bm * (reference_size / mask_sz)
+
+    mask_size = 512
+    bm = compute_beam_width(mask_size)
+    incident_beam = gaussian_beam(mask_size, beam_width=.2)
+    spot_array[:, 0, 0] = (spot_array[:, 0, 0]) * (49/120)
+    spot_array[:, 0, 1] = (spot_array[:, 0, 1]) * (49/120)
+    phase_mask_resized = jax.image.resize(calculate_phase_mask(spot_array, n // 16, 128, False)[0] * np.pi,
+                                        (512, 512), 'nearest')
+
+    phase_mask_resized = np.rot90(phase_mask_resized, 1)
+    phase_mask_resized = np.flip(phase_mask_resized, 0)
+
+    slm_field = gaussian_beam(mask_size, beam_width=.4) * np.exp(1j * phase_mask_resized)
+    far_field = fftshift(fft2(slm_field)) / ((2 * mask_size) ** 2)
+    intensity = np.abs(far_field) ** (1/2)
+    intensity_farfield = intensity / np.max(intensity)
+    intensity_farfield = crop_upper_left_quadrant(crop_lower_right_quadrant(((intensity_farfield - intensity_farfield.min()) / (intensity_farfield.max() - intensity_farfield.min()) * 255).astype(np.uint8)))
+
+    phase_mask_og = jax.image.resize(phase_mask_og.detach().cpu().numpy().squeeze(0).squeeze(0), (512, 512), 'nearest')
+    slm_field_u = gaussian_beam(mask_size, beam_width=.4) * np.exp(1j * phase_mask_og)
+    far_field_u = fftshift(fft2(slm_field_u)) / ((2 * mask_size) ** 2)
+    intensity_u = np.abs(far_field_u) ** (1/2)
+    intensity_farfield_u = intensity_u / np.max(intensity_u)
+    intensity_farfield_u = crop_upper_left_quadrant(crop_lower_right_quadrant(((intensity_farfield_u - intensity_farfield_u.min()) / (
+                intensity_farfield_u.max() - intensity_farfield_u.min()) * 255).astype(np.uint8)))
+
+
+    intensity_mask = cv2.resize(crop_lower_right_quadrant(intensity_mask), (512, 512))
+    intensity_farfield = cv2.resize(crop_upper_left_quadrant(intensity_farfield), (512, 512), interpolation=1)
+    intensity_farfield_u = cv2.resize(crop_upper_left_quadrant(intensity_farfield_u), (512, 512), interpolation=1)
+
+    window_width = 512
+    window_height = 512
+
+    # List of (title, image, position)
+    windows = [
+        ("Phase Mask", phase_mask, (0, 0)),
+        ("Unwrapped Phase Mask", phase_mask_u, (window_width, 0)),
+        ("Far Field", intensity_farfield, (window_width * 2, 0)),
+        ("Unwrapped Far Field", intensity_farfield_u, (window_width * 3, 0)),
+        ("Target Mask", intensity_mask, (window_width * 4, 0)),
+    ]
+
+    for title, image, pos in windows:
+        cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(title, window_width, window_height)
+        cv2.moveWindow(title, *pos)
+        cv2.imshow(title, image)
+
+    cv2.waitKey(1)  # Use waitKey(0) to pause until keypress
+    # combined = np.hstack([phase_mask, phase_mask_u, intensity_farfield, intensity_farfield_u, intensity_mask])
+    # cv2.namedWindow("Mask", cv2.WND_PROP_FULLSCREEN)
+    # cv2.setWindowProperty("Mask", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    # cv2.moveWindow("Mask", 0, 0)
+    # cv2.resizeWindow("Mask", 2560, 512)
     #
-    # with torch.no_grad():  # Ensure no gradients are computed
-    #     predicted_mask = model(spots_tensor).cpu().numpy()
-    # predicted_mask = predicted_mask[0]
-    predicted_mask = (predicted_mask - predicted_mask.min()) / (predicted_mask.max() - predicted_mask.min()) * 255
-    predicted_mask = np.array(predicted_mask.astype(np.uint8))
+    #
+    # cv2.imshow("Mask", combined)
+    # cv2.waitKey(1)
 
-    cv2.namedWindow("Mask", cv2.WND_PROP_FULLSCREEN)
-    cv2.setWindowProperty("Mask", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cv2.moveWindow("Mask", 0, 0)
-    cv2.resizeWindow("Mask", 512, 512)
-    #print(np.max(predicted_mask))
-    lut_map = read_lut.read_cube_lut()
-    print(predicted_mask)
-    print(predicted_mask.shape)
-    rgb_mask = read_lut.apply_lut(predicted_mask, lut_map).astype(np.uint8)
-    predicted_mask = np.rot90(predicted_mask, 1)
-    #predicted_mask = np.flip(predicted_mask)
-    predicted_mask = np.flip(predicted_mask, axis=0)
-    #predicted_mask = np.flip(predicted_mask, axis=1)
-    cv2.imshow("Mask", predicted_mask)
-    cv2.waitKey(1)
+def crop_lower_right_quadrant(image, final_size=512):
+    h, w = image.shape
+    cropped = image[h//2:, w//2:]  # Lower right quadrant
+    return cv2.resize(cropped, (final_size, final_size), interpolation=cv2.INTER_NEAREST)
+
+def crop_upper_left_quadrant(image, final_size=512):
+    h, w = image.shape
+    cropped = image[:h//2, :w//2]  # Lower right quadrant
+    return cv2.resize(cropped, (final_size, final_size), interpolation=cv2.INTER_NEAREST)
 
 def draw_traps(spot_man, frame):
     """

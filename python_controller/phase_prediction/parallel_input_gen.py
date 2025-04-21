@@ -7,8 +7,8 @@ import tempfile
 from phase_calculator import calculate_phase_mask
 
 max_num_spots = 15
-N = 10000
-sizes = [64]
+N = 200000
+sizes = [128]
 num_processes = cpu_count()  # or set to your preferred number
 
 def generate_data(args):
@@ -48,6 +48,7 @@ def generate_data(args):
                     trap[1, 0] = 1.5
 
             phase_masks_reference = calculate_phase_mask(spot_params, rand_num_spots, mask_sz, False)[0]
+            phase_masks_corrected = calculate_phase_mask(spot_params, rand_num_spots, mask_sz, True)[0]
             phase_masks_reference = np.rot90(phase_masks_reference, 1)
             phase_masks_reference = np.flip(phase_masks_reference, axis=0)
 
@@ -66,7 +67,7 @@ def generate_data(args):
             slm_field = incident_beam * np.exp(1j * phase_masks_reference)
 
             far_field = fftshift(fft2(slm_field)) / ((2 * mask_sz) ** 2)
-            intensity = np.abs(far_field)
+            intensity = np.abs(far_field) ** 2
 
             # f, axarr = plt.subplots(2, 1)
             # axarr[0].imshow(intensity, cmap='gray')
@@ -76,7 +77,7 @@ def generate_data(args):
             intensity = intensity / np.max(intensity)
 
             inputs[idx - start_idx] = intensity
-            outputs[idx - start_idx] = phase_masks_reference / np.pi
+            outputs[idx - start_idx] = phase_masks_corrected / np.pi
 
             if (idx - start_idx) % 1000 == 0:
                 print(f"Process {process_id}: {idx - start_idx}/{end_idx - start_idx}")

@@ -7,7 +7,7 @@ From three files, we will store intensity for point trap, annular trap, line tra
 """
 import numpy as np
 import matplotlib.pyplot as plt
-
+import time
 mask_size = 128
 point = np.load("ref_intensity/point_trap_128.npy")
 annular = np.load("ref_intensity/annular_trap_128.npy")
@@ -58,11 +58,13 @@ def add_trap(intensity, x, y, type):
         return add_mask_with_offset(intensity, line, (x, y))
 
 def gen_input_intensity(spot_params):
+    st = time.time()
     intensity = np.zeros((mask_size, mask_size))
 
     for spot in spot_params:
-        x = int(spot[0, 0] * 0.25)
-        y = int(-spot[0, 1] * 0.25)
+        y = spot[0, 0] * 0.25
+        x = -spot[0, 1] * 0.25
+        #print(f"{x}, {y}")
         if x != 0 and y != 0:
             if spot[0, 3] != 0:
                 type = 'a'
@@ -71,9 +73,14 @@ def gen_input_intensity(spot_params):
             else:
                 type = 'p'
 
-            x = int(spot[0, 0] * 0.25 * ((mask_size/2/((mask_size / 512) * 120))) + mask_size/2)
-            y = int(-spot[0, 1] * 0.25 *((mask_size/2/((mask_size / 512) * 120))) + mask_size/2)
+            # y = int(spot[0, 0] * 0.25 * ((mask_size/2/((mask_size / 512) * 120))) + mask_size/2)
+            # x = int(-spot[0, 1] * 0.25 *((mask_size/2/((mask_size / 512) * 120))) + mask_size/2)
+            y = int((64/120) * spot[0, 0]) + 64
+            x = -int((64/120) * spot[0, 1]) + 64
+
+            #print(f"{x}, {y}")
             intensity = add_trap(intensity, x, y, type)
+    et = time.time()
 
     return intensity
 

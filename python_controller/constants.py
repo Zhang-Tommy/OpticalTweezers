@@ -12,10 +12,14 @@ CAM_Y = 480
 CAM_TO_UM = 0.1875
 
 """ Calibration factors for optical misalignment"""
-ANGLE = -3 * (math.pi/180)
-Z_OFFSET = -8.0
-SCALE_X = 1.10
-SCALE_Y = 1.10
+# ANGLE = -3 * (math.pi/180)
+# Z_OFFSET = 0.0 # -8.0 std val
+# SCALE_X = 1.10
+# SCALE_Y = 1.10
+ANGLE = 0
+Z_OFFSET = 0.0 # -8.0 std val
+SCALE_X = 1
+SCALE_Y = 1
 
 """ Path to GIGE camera configuration file"""
 CTI_FILE_DIR = r'C:\Users\User\Desktop\Tommy_Tweezers_Automation\tweezers_automation\tweezers_automation_v2\bgapi2_gige.cti'
@@ -46,7 +50,7 @@ SIMULATOR_MODE = True
 BEAD_RADIUS = 13
 
 """ Default line trap length"""
-LINE_TRAP_LENGTH = 3
+LINE_TRAP_LENGTH = 6
 LINE_TRAP_ANGLE = math.pi / 2
 
 """ Line trap elliptical boundary """
@@ -54,15 +58,15 @@ ELLIPSE_MINOR_AXIS = 12
 ELLIPSE_MAJOR_AXIS = 30 # pixels
 
 """ Annular trap vortex charge/twist """
-ANNULAR_TRAP_VORTEX_CHARGE = 7
+ANNULAR_TRAP_VORTEX_CHARGE = 2
 
 """ Obstacle separation boundary"""
 OBSTACLE_SEPARATION = 26 + 7
 
 OBSTACLE_SEPARATION_OG = 26 + 7
 
-DONUT_Z_OFFSET = -4.0
-
+#DONUT_Z_OFFSET = -4.0
+DONUT_Z_OFFSET = 0
 """ Constant keypoints array size (so jax doesn't recompile and make it slow)"""
 KPS_SIZE = 50
 

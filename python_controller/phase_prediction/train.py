@@ -8,7 +8,7 @@ import numpy as np
 from scipy.fft import fft2, fftshift
 
 def get_dataloader(resolution, batch_size):
-    file_path = f"./train_data/unet_10000_{resolution}.hdf5"
+    file_path = f"./train_data/unet_200000_{resolution}.hdf5"
     dataset = HDF5Dataset(file_path)
     train_size = int(0.8 * len(dataset))  # 80% training, 20% validation
     val_size = len(dataset) - train_size
@@ -76,12 +76,12 @@ def train_unet(model, train_dataloader, val_dataloader, optimizer, loss_fn, num_
     print("Training finished.")
 
 if __name__ == "__main__":
-    resolutions = [64]
+    resolutions = [128]
     batch_sz = 16
     num_epochs = 100
-    lr = 0.001
-    num_features = 16
-    model_save_path = "best_unet_64_intensity_loss.pth"
+    lr = 0.0001
+    num_features = 64
+    model_save_path = "best_unet_128_200k_corrected_10200.pth"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet(in_channels=1, out_channels=1, init_features=num_features).to(device)

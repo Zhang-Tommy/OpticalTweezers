@@ -1198,3 +1198,10 @@ dkms.conf
 # Raspberry Pi Pico disassembler file
 *.dis
 
+*.pth
+*.png
+*.mat
+*.hdf5
+*.h5
+*.mp4
+*.csv

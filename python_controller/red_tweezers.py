@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 import functools
 
 center = np.array([0.5, 0.5])  # center of hologram
-hologram_size = np.array([10200, 10200])  # size of hologram (microns)
+#hologram_size = np.array([10200, 10200])  # size of hologram (microns)
+hologram_size = np.array([2050, 2050])
+
 f = 4500.0  # focal length (microns)
 k = 5.905249  # wavevector in 1/microns
 

@@ -4,9 +4,11 @@ import jax.numpy as jnp
 import time
 import matplotlib.pyplot as plt
 import functools
+from scipy.fft import fft2, fftshift
 
 center = np.array([0.5, 0.5])  # center of hologram
 hologram_size = np.array([10200, 10200])  # size of hologram (microns)
+#hologram_size = np.array([2550, 2550])
 f = 4500.0  # focal length (microns)
 k = 5.905249  # wavevector in 1/microns
 
@@ -202,7 +204,7 @@ if __name__ == "__main__":
 
     single_spot = np.array([
 
-        [[15, -15, -0.000000, 0.000000],
+        [[60, -60, -0.000000, 0.000000],
          [1.000000, 0.000000, 0.000000, 0.000000],
          [0.000000, 0.000000, 1.000000, 0.000000],
          [0.000000, 0.000000, 0.000000, 0.000000]],
@@ -253,11 +255,37 @@ if __name__ == "__main__":
          [0.000000, 0.000000, 0.000000, 0.000000]]
     ])
 
-    mask = calculate_phase_mask(spots_parameters, 1, 512, False)
+    mask = calculate_phase_mask(single_spot, 1, 128, False)[0]
 
-    plt.figure(figsize=(6, 6))
-    plt.imshow(mask[0], cmap='gray')  # Use 'gray' colormap for better visualization
-    plt.colorbar(label="Phase Value")
-    plt.title("Predicted Mask")
-    plt.axis("off")  # Remove axis for a cleaner look
+    mask = np.rot90(mask, 1)
+    mask = np.flip(mask, axis=0)
+    def gaussian_beam(mask_size, beam_width):
+        x = np.linspace(-1, 1, mask_size)
+        y = np.linspace(-1, 1, mask_size)
+        xx, yy = np.meshgrid(x, y)
+        return np.exp(-(xx ** 2 + yy ** 2) / (2 * beam_width ** 2))
+
+
+    def compute_beam_width(mask_sz, reference_size=512, reference_bm=0.05):
+        return reference_bm * (reference_size / mask_sz)
+
+
+    bm = compute_beam_width(128)
+    incident_beam = gaussian_beam(128, beam_width=bm)
+
+    slm_field = incident_beam * np.exp(1j * mask)
+
+    far_field = fftshift(fft2(slm_field)) / ((2 * 128) ** 2)
+    intensity = np.abs(far_field)
+
+    f, axarr = plt.subplots(2, 1)
+    axarr[0].imshow(intensity, cmap='gray')
+    axarr[1].imshow(mask, cmap='gray')
     plt.show()
+
+    # plt.figure(figsize=(6, 6))
+    # plt.imshow(mask[0], cmap='gray')  # Use 'gray' colormap for better visualization
+    # plt.colorbar(label="Phase Value")
+    # plt.title("Predicted Mask")
+    # plt.axis("off")  # Remove axis for a cleaner look
+    # plt.show()
