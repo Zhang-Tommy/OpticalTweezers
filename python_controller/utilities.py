@@ -218,7 +218,7 @@ def init_holo_engine():
 def init_phase_predictor():
     """ Takes place of hologram engine, start opencv window and initialize pre-trained NN for phase mask predictions """
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = load_model("./phase_prediction/best_unet_256_200k.pth", device)
+    model = load_model("./phase_prediction/best_unet_256_200k_4_30_2025.pth", device)
     return model
 
 def load_model(model_path, device):
@@ -235,14 +235,79 @@ def load_model(model_path, device):
     model.eval()
     return model
 
+def calculate_farfield(phase_mask):
+    def gaussian_beam(mask_size, beam_width):
+        x = np.linspace(-1, 1, mask_size)
+        y = np.linspace(-1, 1, mask_size)
+        xx, yy = np.meshgrid(x, y)
+        return np.exp(-(xx ** 2 + yy ** 2) / (2 * beam_width ** 2))
+
+    def compute_beam_width(mask_sz, reference_size=512, reference_bm=0.05):
+        return reference_bm * (reference_size / mask_sz)
+
+    mask_size = 512
+    bm = compute_beam_width(mask_size)
+    incident_beam = gaussian_beam(mask_size, beam_width=bm)
+
+    slm_field = incident_beam * np.exp(1j * phase_mask)
+    far_field = fftshift(fft2(slm_field)) / ((2 * mask_size) ** 2)
+    intensity = np.abs(far_field) ** (1 / 2)
+    intensity_farfield = intensity / np.max(intensity)
+
+    return intensity_farfield
+
 def predict_mask(spot_array, model):
+    n = spot_array.shape[0] // 16 # number of spots
+    spot_array = np.reshape(spot_array, (n, 4, 4))
+
+    # Calculate predicted phase mask
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    intensity_mask = input_converter.gen_input_intensity(spot_array)
+    intensity_input = torch.tensor(intensity_mask, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+
+    prediction = model(intensity_input.to(device))
+    prediction = prediction.detach().cpu().numpy().squeeze(0).squeeze(0)
+    prediction = np.rot90(prediction, 1)
+    prediction = np.flip(prediction, 0)
+
+    prediction_resized = jax.image.resize(prediction * np.pi,(512, 512), 'nearest')
+
+
+    predicted_farfield = calculate_farfield(prediction_resized)
+
+    def to_cv(np_array):
+        return ((np_array - np_array.min()) / (np_array.max() - np_array.min()) * 255).astype(np.uint8)
+
+    window_width = 512
+    window_height = 512
+    windows = [
+        ("Phase Mask", to_cv(prediction), (0, 0)),
+        ("Unwrapped Phase Mask", to_cv(predicted_farfield), (window_width, 0)),
+        #("Far Field", intensity_farfield, (window_width * 2, 0)),
+        #("Unwrapped Far Field", intensity_farfield_u, (window_width * 3, 0)),
+        #("Target Mask", intensity_mask, (window_width * 4, 0)),
+    ]
+
+    for title, image, pos in windows:
+        cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(title, window_width, window_height)
+        cv2.moveWindow(title, *pos)
+        cv2.imshow(title, image)
+
+    cv2.waitKey(1)  # Use waitKey(0) to pause until keypress
+
+
+
+
+def predict_mask1(spot_array, model):
     """ Input spot array, convert to n, 4, 4 array for model input """
     n = spot_array.shape[0] # number of spots * 16
     spot_array = np.reshape(spot_array, (n // 16, 4, 4))
 
     mask_type = 'lg'
     #if mask_type == 'lg':
-    phase_mask = calculate_phase_mask(spot_array, n, 128, False)[0]
+    phase_mask = calculate_phase_mask(spot_array, n, 256, False)[0]
 
     intensity_mask = input_converter.gen_input_intensity(spot_array)
     #intensity_input = torch.tensor(intensity_mask, dtype=torch.float32).unsqueeze(0).unsqueeze(0)
@@ -286,33 +351,33 @@ def predict_mask(spot_array, model):
     def compute_beam_width(mask_sz, reference_size=512, reference_bm=0.05):
         return reference_bm * (reference_size / mask_sz)
 
-    mask_size = 512
+    mask_size = 256
     bm = compute_beam_width(mask_size)
-    incident_beam = gaussian_beam(mask_size, beam_width=.2)
+    incident_beam = gaussian_beam(mask_size, beam_width=bm)
     spot_array[:, 0, 0] = (spot_array[:, 0, 0]) * (49/120)
     spot_array[:, 0, 1] = (spot_array[:, 0, 1]) * (49/120)
-    phase_mask_resized = jax.image.resize(calculate_phase_mask(spot_array, n // 16, 128, False)[0] * np.pi,
+    phase_mask_resized = jax.image.resize(calculate_phase_mask(spot_array, n // 16, 256, False)[0] * np.pi,
                                         (512, 512), 'nearest')
 
     phase_mask_resized = np.rot90(phase_mask_resized, 1)
     phase_mask_resized = np.flip(phase_mask_resized, 0)
 
-    slm_field = gaussian_beam(mask_size, beam_width=.4) * np.exp(1j * phase_mask_resized)
+    slm_field = gaussian_beam(mask_size, beam_width=bm) * np.exp(1j * phase_mask_resized)
     far_field = fftshift(fft2(slm_field)) / ((2 * mask_size) ** 2)
     intensity = np.abs(far_field) ** (1/2)
     intensity_farfield = intensity / np.max(intensity)
-    intensity_farfield = crop_upper_left_quadrant(crop_lower_right_quadrant(((intensity_farfield - intensity_farfield.min()) / (intensity_farfield.max() - intensity_farfield.min()) * 255).astype(np.uint8)))
+   #intensity_farfield = crop_upper_left_quadrant(crop_lower_right_quadrant(((intensity_farfield - intensity_farfield.min()) / (intensity_farfield.max() - intensity_farfield.min()) * 255).astype(np.uint8)))
 
     phase_mask_og = jax.image.resize(phase_mask_og.detach().cpu().numpy().squeeze(0).squeeze(0), (512, 512), 'nearest')
-    slm_field_u = gaussian_beam(mask_size, beam_width=.4) * np.exp(1j * phase_mask_og)
+    slm_field_u = gaussian_beam(mask_size, beam_width=bm) * np.exp(1j * phase_mask_og)
     far_field_u = fftshift(fft2(slm_field_u)) / ((2 * mask_size) ** 2)
     intensity_u = np.abs(far_field_u) ** (1/2)
     intensity_farfield_u = intensity_u / np.max(intensity_u)
-    intensity_farfield_u = crop_upper_left_quadrant(crop_lower_right_quadrant(((intensity_farfield_u - intensity_farfield_u.min()) / (
-                intensity_farfield_u.max() - intensity_farfield_u.min()) * 255).astype(np.uint8)))
+    #intensity_farfield_u = crop_upper_left_quadrant(crop_lower_right_quadrant(((intensity_farfield_u - intensity_farfield_u.min()) / (
+    #            intensity_farfield_u.max() - intensity_farfield_u.min()) * 255).astype(np.uint8)))
 
 
-    intensity_mask = cv2.resize(crop_lower_right_quadrant(intensity_mask), (512, 512))
+    intensity_mask = cv2.resize(intensity_mask, (512, 512))
     intensity_farfield = cv2.resize(crop_upper_left_quadrant(intensity_farfield), (512, 512), interpolation=1)
     intensity_farfield_u = cv2.resize(crop_upper_left_quadrant(intensity_farfield_u), (512, 512), interpolation=1)
 
