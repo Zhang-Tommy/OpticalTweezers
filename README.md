@@ -1,7 +1,4 @@
 # SMARTS Lab Holographic Optical Tweezers Documentation
-Tommy Zhang  
-June 9 2025
-
 ## Preface
 The work I did for my research under Professor Ashis Banerjee mostly involved developing/finding new strategies and implementing them into the holographic optical tweezer (HOT) system we have.  
 I will assume the reader has a basic understanding of the principles of HOTs and have gone through the documentation provided with the Meadowlark Optics branded HOT system (Red Tweezers, User Guide, etc...).
@@ -9,8 +6,11 @@ I will assume the reader has a basic understanding of the principles of HOTs and
 ## Code Organization
 The code and supporting files are all contained within the *Code* directory. Under this directory are the two main projects I worked on for my research.
 
-- *python_controller* contains the files required for running the MPC controller with the HOT system. It can interface with the camera and spatial light modulator (SLM) of the HOT system. There is also a GUI for the user to view the workspace camera, add traps, and start MPC control instances (which navigate traps from a start to goal location)
-- *phase_predictor* contains the supporting files for generating, training, and validating a neural network for the task of phase retrieval. Phase retrieval is the process of generating the phase mask for display onto the SLM. Please refer to the MATLAB toolbox *otslm* for greater documentation on some implementations used here.
+- *python_controller* (within the main branch) contains the files required for running the MPC controller with the HOT system. It can interface with the camera and spatial light modulator (SLM) of the HOT system. There is also a GUI for the user to view the workspace camera, add traps, and start MPC control instances (which navigate traps from a start to goal location)
+- *phase_predictor* (within the phase_prediction branch) contains the supporting files for generating, training, and validating a neural network for the task of phase retrieval. Phase retrieval is the process of generating the phase mask for display onto the SLM. Please refer to the MATLAB toolbox *otslm* for greater documentation on some implementations used here.
+- *red_tweezers_1_4_release* is the red tweezers source code and hologram engine provided in the repo for completeness. 
+- *slm_prediction* are old files when beginning the phase prediction project. The model used was an MLP rather than a U-Net and produced poor results. This is provided purely as a reference.
+- *tweezers_automation* is the original C++ implementation of the HOT automation system code. It contains the wavefront expansion obstacle avoidance/path planning algorithm and PID position controller which was replaced in preference of the MPC control strategy. This is provided purely as a reference.
 
 ## Python Controller
 ### main.py
@@ -44,6 +44,8 @@ This is also where the user can toggle on and off the debug and simulator modes.
 ## Phase Prediction
 The U-Net project files are contained under the phase_prediction subdirectory in the phase_predictor branch. I will assume the reader has experience with pytorch and an understanding of the U-Net architecture and training/validation process.
 
+Note that the phase prediction U-Net model cannot easily be run on the lab laptop due to the obsolete GPU. Running inference using the CPU can be done but defeats the purpose of training the U-Net to conduct fast phase calculations for the HOT system. This project will be left to future students for integration into a new lab computer. 
+
 ### parallel_input_gen.py
 This is the data generation script that will use a ported version of red tweezers in Python to generate batches of training data for training the U-Net. The training data are sets of inputs (intensity distributions) and outputs (phase masks) of the same dimensionality. 
 
@@ -64,6 +66,12 @@ This contains the U-Net architecture implemented using PyTorch, as well as the d
 
 ### train.py
 train.py contains the training code for the U-Net. The model training hyperparameters can be tuned here.
+
+### input_converter.py
+The hologram engine accepts UDP packets (spot array) defining trap attributes for calculating phase masks. Similarly in the U-Net model, the input to the U-Net is derived from the same spot array but with one additional step. 
+
+The input converter takes the spot array, parses it, then adds to an empty intensity distribution saved copies of the simulated farfield intensity for the desired trap. For example, if we desired a single point trap in the middle of the workspace, the spot array would indicate that and the input converter would place a reference point trap distribution in the middle of the input. Once passed through the model the output can be used directly as the phase mask for display onto the SLM.
+
 
 ## Misc Issues
 Development for these two main projects were done on a personal workstation. The laptop which is used for operating the HOT system is quite old and still runs Windows 7. Upgrading the OS is really not an option due to the computers old hardware. This means that many workarounds were done to make more modern packages like opencv, JAX, and PyTorch run on the system. These package versions are mainly the older versions which are still compatible with Windows 7 and older versions of Python but **restarting development should be done using more modern hardware**. 
@@ -97,6 +105,18 @@ After reading through the documentation for the HOT system provided by Meadowlar
 - There are safety switches which will automatically turn off the laser if the cover opens. This should not be depended on while operating the HOT system.
 - Using the microscope slide is the best method for preparing the sample for the HOT system. Glass bottom petri dishes were used initially but the non-uniformity of the solution (due to surface tension creating a droplet) meant that micro-beads would congregate quickly at the zero-th order spot during operation of the laser. The microscope slide does not have this issue and is preferred. 
 - Ensure the microscope slide and cover is clean. If there are noticeable streaks while looking through the camera it can inhibit proper operation of the tweezers. 
-- 
+
+## Python Controller User Guide
+Follow the requirements.txt file and install all required Python packages. The program is developed using Python 3.8
+1. Run main.py (constants.py -> SIMULATOR_MODE to toggle between sim and real-time camera feed)
+2. Ensure hologram engine.exe is running and placed accordingly (following Meadowlark Optics user guide)
+3. Left click anywhere on the camera/simulator view to add a point trap. Right click the trap to remove it.
+4. Middle click to add a corresponding goal position for a point trap. Start and goal positions for multiple point traps are based on a queueing system. For multiple goals and traps it is recommended to add them sequentially in trap-goal pairs.
+5. Toggling (clicking) the PointGoal slider will maneuver all point traps to respective goal locations using the MPC controller.
+6. Line traps and donut (annular) traps can be added by toggling LineTrap or DonutTrap respectively and left clicking the desired trap location. Similarly to point traps we can add goal locations for these by either ctrl + left click to add a line goal or alt + left click to add an annular trap goal.
+7. Toggle the slider MoveDo...al to enable the MPC controller for both annular and line traps.
+8. Moving any trap can be accomplished by first placing the trap onto the workspace, then clicking and dragging the trap to the desired location.
+
+
 
 
